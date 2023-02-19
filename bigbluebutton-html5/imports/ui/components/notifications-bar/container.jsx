@@ -1,16 +1,18 @@
 import { Meteor } from 'meteor/meteor';
-import { createContainer } from 'meteor/react-meteor-data';
-import React, { Component, PropTypes } from 'react';
+import { withTracker } from 'meteor/react-meteor-data';
+import React, { useEffect } from 'react';
 import { defineMessages, injectIntl } from 'react-intl';
-import _ from 'underscore';
-import NavBarService from '../nav-bar/service';
+import _ from 'lodash';
 import Auth from '/imports/ui/services/auth';
-import { humanizeSeconds } from '/imports/utils/humanizeSeconds';
+import { MeetingTimeRemaining } from '/imports/api/meetings';
+import Meetings from '/imports/api/meetings';
+import BreakoutRemainingTime from '/imports/ui/components/breakout-room/breakout-remaining-time/container';
+import Styled from './styles';
+import { layoutSelectInput, layoutDispatch } from '../layout/context';
+import { ACTIONS } from '../layout/enums';
 
+import breakoutService from '/imports/ui/components/breakout-room/service';
 import NotificationsBar from './component';
-
-// the connection is up and running
-const STATUS_CONNECTED = 'connected';
 
 // disconnected and trying to open a new connection
 const STATUS_CONNECTING = 'connecting';
@@ -21,91 +23,100 @@ const STATUS_FAILED = 'failed';
 // failed to connect and waiting to try to reconnect
 const STATUS_WAITING = 'waiting';
 
-// user has disconnected the connection
-const STATUS_OFFLINE = 'offline';
+const METEOR_SETTINGS_APP = Meteor.settings.public.app;
+
+const REMAINING_TIME_THRESHOLD = METEOR_SETTINGS_APP.remainingTimeThreshold;
 
 const intlMessages = defineMessages({
   failedMessage: {
     id: 'app.failedMessage',
-    defaultMessage: 'Apologies, trouble connecting to the server.',
-    description: 'Message when the client is trying to connect to the server',
+    description: 'Notification for connecting to server problems',
   },
   connectingMessage: {
     id: 'app.connectingMessage',
-    defaultMessage: 'Connecting...',
-    description: 'Message when the client is trying to connect to the server',
+    description: 'Notification message for when client is connecting to server',
   },
   waitingMessage: {
     id: 'app.waitingMessage',
-    defaultMessage: 'Disconnected. Trying to reconnect in {seconds} seconds...',
-    description: 'Message when the client is trying to reconnect to the server',
+    description: 'Notification message for disconnection with reconnection counter',
+  },
+  retryNow: {
+    id: 'app.retryNow',
+    description: 'Retry now text for reconnection counter',
   },
   breakoutTimeRemaining: {
     id: 'app.breakoutTimeRemainingMessage',
-    defaultMessage: 'Breakout Room time remaining: {time}',
     description: 'Message that tells how much time is remaining for the breakout room',
   },
   breakoutWillClose: {
     id: 'app.breakoutWillCloseMessage',
-    defaultMessage: 'Time ended. Breakout Room will close soon',
     description: 'Message that tells time has ended and breakout will close',
   },
   calculatingBreakoutTimeRemaining: {
     id: 'app.calculatingBreakoutTimeRemaining',
-    defaultMessage: 'Calculating remaining time...',
     description: 'Message that tells that the remaining time is being calculated',
+  },
+  meetingTimeRemaining: {
+    id: 'app.meeting.meetingTimeRemaining',
+    description: 'Message that tells how much time is remaining for the meeting',
+  },
+  meetingWillClose: {
+    id: 'app.meeting.meetingTimeHasEnded',
+    description: 'Message that tells time has ended and meeting will close',
+  },
+  alertMeetingEndsUnderMinutes: {
+    id: 'app.meeting.alertMeetingEndsUnderMinutes',
+    description: 'Alert that tells that the meeting ends under x minutes',
+  },
+  alertBreakoutEndsUnderMinutes: {
+    id: 'app.meeting.alertBreakoutEndsUnderMinutes',
+    description: 'Alert that tells that the breakout ends under x minutes',
   },
 });
 
-class NotificationsBarContainer extends Component {
-  constructor(props) {
-    super(props);
-  }
+const NotificationsBarContainer = (props) => {
+  const { message, color } = props;
 
-  render() {
-    if (_.isEmpty(this.props.message)) {
-      return null;
+  const notificationsBar = layoutSelectInput((i) => i.notificationsBar);
+  const layoutContextDispatch = layoutDispatch();
+
+  const { hasNotification } = notificationsBar;
+
+  useEffect(() => {
+    const localHasNotification = !!message;
+
+    if (localHasNotification !== hasNotification) {
+      layoutContextDispatch({
+        type: ACTIONS.SET_HAS_NOTIFICATIONS_BAR,
+        value: localHasNotification,
+      });
     }
+  }, [message, hasNotification]);
 
-    const { message, color } = this.props;
-
-    return (
-      <NotificationsBar color={color}>
-        {message}
-      </NotificationsBar>
-    );
+  if (_.isEmpty(message)) {
+    return null;
   }
-}
+
+  return (
+    <NotificationsBar color={color}>
+      {message}
+    </NotificationsBar>
+  );
+};
 
 let retrySeconds = 0;
-let timeRemaining = 0;
-const retrySecondsDep = new Tracker.Dependency;
-const timeRemainingDep = new Tracker.Dependency;
+const retrySecondsDep = new Tracker.Dependency();
 let retryInterval = null;
-let timeRemainingInterval = null;
 
 const getRetrySeconds = () => {
   retrySecondsDep.depend();
   return retrySeconds;
 };
 
-const getTimeRemaining = () => {
-  timeRemainingDep.depend();
-  return timeRemaining;
-};
-
 const setRetrySeconds = (sec = 0) => {
   if (sec !== retrySeconds) {
     retrySeconds = sec;
     retrySecondsDep.changed();
-  }
-};
-
-const setTimeRemaining = (sec = 0) => {
-  if (sec !== timeRemaining) {
-    timeRemaining = sec;
-    changeDocumentTitle(sec);
-    timeRemainingDep.changed();
   }
 };
 
@@ -117,37 +128,40 @@ const startCounter = (sec, set, get, interval) => {
   }, 1000);
 };
 
-const changeDocumentTitle = (sec) => {
-  if (sec >= 0) {
-    const affix = `(${humanizeSeconds(sec)}`;
-    const splitTitle = document.title.split(') ');
-    const title = splitTitle[1] || splitTitle[0];
-    document.title = [affix, title].join(') ');
-  }
+const reconnect = () => {
+  Meteor.reconnect();
 };
 
-export default injectIntl(createContainer(({ intl }) => {
-  const { status, connected, retryCount, retryTime } = Meteor.status();
-  let data = {};
+export default injectIntl(withTracker(({ intl }) => {
+  const { status, connected, retryTime } = Meteor.status();
+  const data = {};
 
   if (!connected) {
     data.color = 'primary';
     switch (status) {
-      case STATUS_OFFLINE:
-      case STATUS_FAILED:
+      case STATUS_FAILED: {
         data.color = 'danger';
         data.message = intl.formatMessage(intlMessages.failedMessage);
         break;
-      case STATUS_CONNECTING:
+      }
+      case STATUS_CONNECTING: {
         data.message = intl.formatMessage(intlMessages.connectingMessage);
         break;
-      case STATUS_WAITING:
+      }
+      case STATUS_WAITING: {
         const sec = Math.round((retryTime - (new Date()).getTime()) / 1000);
         retryInterval = startCounter(sec, setRetrySeconds, getRetrySeconds, retryInterval);
-        data.message = intl.formatMessage(
-          intlMessages.waitingMessage,
-          { seconds: getRetrySeconds() }
+        data.message = (
+          <>
+            {intl.formatMessage(intlMessages.waitingMessage, { 0: getRetrySeconds() })}
+            <Styled.RetryButton type="button" onClick={reconnect}>
+              {intl.formatMessage(intlMessages.retryNow)}
+            </Styled.RetryButton>
+          </>
         );
+        break;
+      }
+      default:
         break;
     }
 
@@ -155,38 +169,45 @@ export default injectIntl(createContainer(({ intl }) => {
   }
 
   const meetingId = Auth.meetingID;
-  const breakouts = NavBarService.getBreakouts();
+  const breakouts = breakoutService.getBreakouts();
 
-  if (breakouts) {
-    const currentBreakout = breakouts.find(b => b.breakoutMeetingId === meetingId);
+  if (breakouts.length > 0) {
+    const currentBreakout = breakouts.find((b) => b.breakoutId === meetingId);
+
     if (currentBreakout) {
-      roomRemainingTime = currentBreakout.timeRemaining;
-      if (!timeRemainingInterval && roomRemainingTime) {
-        timeRemainingInterval = startCounter(roomRemainingTime,
-                                             setTimeRemaining,
-                                             getTimeRemaining,
-                                             timeRemainingInterval);
-      }
-    } else if (timeRemainingInterval) {
-      clearInterval(timeRemainingInterval);
-    }
-
-    const timeRemaining = getTimeRemaining();
-    if (timeRemaining) {
-      if (timeRemaining > 0) {
-        data.message = intl.formatMessage(
-          intlMessages.breakoutTimeRemaining,
-          { time: humanizeSeconds(timeRemaining) }
-        );
-      } else {
-        clearInterval(timeRemainingInterval);
-        data.message = intl.formatMessage(intlMessages.breakoutWillClose);
-      }
-    } else if (!timeRemaining && currentBreakout) {
-      data.message = intl.formatMessage(intlMessages.calculatingBreakoutTimeRemaining);
+      data.message = (
+        <BreakoutRemainingTime
+          breakoutRoom={currentBreakout}
+          messageDuration={intlMessages.breakoutTimeRemaining}
+          timeEndedMessage={intlMessages.breakoutWillClose}
+          displayAlerts={true}
+        />
+      );
     }
   }
 
+  const meetingTimeRemaining = MeetingTimeRemaining.findOne({ meetingId });
+  const Meeting = Meetings.findOne({ meetingId },
+    { fields: { 'meetingProp.isBreakout': 1 } });
+
+  if (meetingTimeRemaining && Meeting) {
+    const { timeRemaining } = meetingTimeRemaining;
+    const { isBreakout } = Meeting.meetingProp;
+    const underThirtyMin = timeRemaining && timeRemaining <= (REMAINING_TIME_THRESHOLD * 60);
+
+    if (underThirtyMin && !isBreakout) {
+      data.message = (
+        <BreakoutRemainingTime
+          breakoutRoom={meetingTimeRemaining}
+          messageDuration={intlMessages.meetingTimeRemaining}
+          timeEndedMessage={intlMessages.meetingWillClose}
+          displayAlerts={true}
+        />
+      );
+    }
+  }
+
+  data.alert = true;
   data.color = 'primary';
   return data;
-}, NotificationsBarContainer));
+})(NotificationsBarContainer));

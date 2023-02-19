@@ -1,61 +1,123 @@
 package org.bigbluebutton.core.apps
 
-import scala.collection.mutable.ArrayBuffer
+import org.bigbluebutton.common2.msgs.TranscriptVO
 import scala.collection.immutable.HashMap
 
 class CaptionModel {
-  var transcripts = Map[String, Array[String]]()
+  private var transcripts = new HashMap[String, TranscriptVO]()
 
-  def newTranscript(locale: String, localeCode: String, ownerId: String) {
-    transcripts += locale -> Array(ownerId, "", localeCode)
+  private def createTranscript(name: String, locale: String, ownerId: String): TranscriptVO = {
+    val transcript = TranscriptVO(ownerId, "", locale)
+    transcripts += name -> transcript
+    transcript
   }
 
-  def findLocaleByOwnerId(userId: String): Option[String] = {
-    transcripts.find(_._2(0) == userId).foreach(t => {
-      return Some(t._1)
+  private def findTranscriptByOwnerId(userId: String): Option[(String, TranscriptVO)] = {
+    transcripts.find(_._2.ownerId == userId).foreach(t => {
+      return Some(t)
     })
 
     return None
   }
 
-  def findLocaleCodeByLocale(locale: String): String = {
-    if (transcripts contains locale) {
-      return transcripts(locale)(2)
+  def updateTranscriptOwner(name: String, locale: String, ownerId: String): Map[String, TranscriptVO] = {
+    var updatedTranscripts = new HashMap[String, TranscriptVO]
+
+    // clear owner from previous locale
+    if (ownerId.length > 0) {
+      findTranscriptByOwnerId(ownerId).foreach(t => {
+        val oldTranscript = t._2.copy(ownerId = "")
+
+        transcripts += t._1 -> oldTranscript
+        updatedTranscripts += t._1 -> oldTranscript
+      })
+    }
+    // change the owner if it does exist
+    if (transcripts contains name) {
+      val newTranscript = transcripts(name).copy(ownerId = ownerId)
+
+      transcripts += name -> newTranscript
+      updatedTranscripts += name -> newTranscript
+    } else { // create the locale if it doesn't exist
+      val addedTranscript = createTranscript(name, locale, ownerId)
+      updatedTranscripts += name -> addedTranscript
     }
 
-    return ""
+    updatedTranscripts
   }
 
-  def changeTranscriptOwner(locale: String, ownerId: String) {
-    if (transcripts contains locale) {
-      transcripts(locale)(0) = ownerId
-    }
+  def getHistory(): Map[String, TranscriptVO] = {
+    transcripts
   }
 
-  def getHistory(): Map[String, Array[String]] = {
-    var history = Map[String, Array[String]]()
-
-    transcripts.foreach(t => {
-      history += t._1 -> Array(t._2(0), t._2(1), t._2(2))
-    })
-
-    history
-  }
-
-  def editHistory(startIndex: Integer, endIndex: Integer, locale: String, text: String) {
+  def editHistory(userId: String, startIndex: Integer, endIndex: Integer, name: String, text: String): Boolean = {
+    var successfulEdit = false
     //println("editHistory entered")
-    if (transcripts contains locale) {
-      //println("editHistory found locale:" + locale)
-      var oText: String = transcripts(locale)(1)
+    if (transcripts contains name) {
+      val oldTranscript = transcripts(name)
+      if (oldTranscript.ownerId == userId || userId == "system") {
+        //println("editHistory found name:" + name)
+        val oText: String = transcripts(name).text
 
-      if (startIndex >= 0 && endIndex <= oText.length && startIndex <= endIndex) {
-        //println("editHistory passed index test")
-        var sText: String = oText.substring(0, startIndex)
-        var eText: String = oText.substring(endIndex)
+        if (startIndex >= 0 && endIndex <= oText.length && startIndex <= endIndex) {
+          //println("editHistory passed index test")
+          val sText: String = oText.substring(0, startIndex)
+          val eText: String = oText.substring(endIndex)
 
-        transcripts(locale)(1) = (sText + text + eText)
-        //println("editHistory new history is: " + transcripts(locale)(1))
+          transcripts += name -> transcripts(name).copy(text = (sText + text + eText))
+          //println("editHistory new history is: " + transcripts(name).text)
+          successfulEdit = true
+        }
       }
     }
+
+    successfulEdit
+  }
+
+  def getTextTail(name: String): String = {
+    var tail = ""
+    if (transcripts contains name) {
+      val text = transcripts(name).text
+      if (text.size > 256) {
+        tail = text.slice(text.size - 256, text.size)
+      } else {
+        tail = text
+      }
+    }
+
+    tail
+  }
+
+  def getLocale(name: String): String = {
+    var locale = ""
+    if (transcripts contains name) {
+      locale = transcripts(name).locale
+    }
+
+    locale
+  }
+
+  def checkCaptionOwnerLogOut(userId: String): Option[(String, TranscriptVO)] = {
+    var rtnTranscript: Option[(String, TranscriptVO)] = None
+
+    if (userId.length > 0) {
+      findTranscriptByOwnerId(userId).foreach(t => {
+        val oldTranscript = t._2.copy(ownerId = "")
+
+        transcripts += t._1 -> oldTranscript
+        rtnTranscript = Some((t._1, oldTranscript))
+      })
+    }
+    rtnTranscript
+  }
+
+  def isUserCaptionOwner(userId: String, name: String): Boolean = {
+    var isOwner: Boolean = false;
+
+    if (transcripts.contains(name) && transcripts(name).ownerId == userId) {
+      isOwner = true;
+    }
+
+    isOwner
   }
 }

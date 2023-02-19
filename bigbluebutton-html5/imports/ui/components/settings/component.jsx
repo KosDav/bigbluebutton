@@ -1,218 +1,306 @@
-import React from 'react';
-import Icon from '/imports/ui/components/icon/component';
-import Button from '/imports/ui/components/button/component';
-import Modal from '/imports/ui/components/modal/component';
-import AudioMenu from './submenus/audio/component';
-import VideoMenu from './submenus/video/component';
-import ApplicationMenu from './submenus/application/component';
-import UsersMenu from './submenus/users/component';
-import classNames from 'classnames';
-import ReactDOM from 'react-dom';
-import styles from './styles.scss';
+import React, { Component } from 'react';
+import Modal from '/imports/ui/components/common/modal/fullscreen/component';
+import { defineMessages, injectIntl } from 'react-intl';
+import DataSaving from '/imports/ui/components/settings/submenus/data-saving/component';
+import Application from '/imports/ui/components/settings/submenus/application/component';
+import Notification from '/imports/ui/components/settings/submenus/notification/component';
+import _ from 'lodash';
+import PropTypes from 'prop-types';
+import { withModalMounter } from '/imports/ui/components/common/modal/service';
+import Styled from './styles';
+import { formatLocaleCode } from '/imports/utils/string-utils';
 
-export default class Settings extends React.Component {
-  constructor(props) {
-    super(props);
-    this.submenus = [];
-    this.state = { activeSubmenu: 0, focusSubmenu: 0 };
+const intlMessages = defineMessages({
+  appTabLabel: {
+    id: 'app.settings.applicationTab.label',
+    description: 'label for application tab',
+  },
+  audioTabLabel: {
+    id: 'app.settings.audioTab.label',
+    description: 'label for audio tab',
+  },
+  videoTabLabel: {
+    id: 'app.settings.videoTab.label',
+    description: 'label for video tab',
+  },
+  usersTabLabel: {
+    id: 'app.settings.usersTab.label',
+    description: 'label for participants tab',
+  },
+  SettingsLabel: {
+    id: 'app.settings.main.label',
+    description: 'General settings label',
+  },
+  CancelLabel: {
+    id: 'app.settings.main.cancel.label',
+    description: 'Discard the changes and close the settings menu',
+  },
+  CancelLabelDesc: {
+    id: 'app.settings.main.cancel.label.description',
+    description: 'Settings modal cancel button description',
+  },
+  SaveLabel: {
+    id: 'app.settings.main.save.label',
+    description: 'Save the changes and close the settings menu',
+  },
+  SaveLabelDesc: {
+    id: 'app.settings.main.save.label.description',
+    description: 'Settings modal save button label',
+  },
+  notificationLabel: {
+    id: 'app.submenu.notification.SectionTitle', // set menu label identical to section title
+    description: 'label for notification tab',
+  },
+  dataSavingLabel: {
+    id: 'app.settings.dataSavingTab.label',
+    description: 'label for data savings tab',
+  },
+  savedAlertLabel: {
+    id: 'app.settings.save-notification.label',
+    description: 'label shown in toast when settings are saved',
+  },
+  on: {
+    id: 'app.switch.onLabel',
+    description: 'label for toggle switch on state',
+  },
+  off: {
+    id: 'app.switch.offLabel',
+    description: 'label for toggle switch off state',
+  },
+});
+
+const propTypes = {
+  intl: PropTypes.shape({
+    formatMessage: PropTypes.func.isRequired,
+  }).isRequired,
+  dataSaving: PropTypes.shape({
+    viewParticipantsWebcams: PropTypes.bool,
+    viewScreenshare: PropTypes.bool,
+  }).isRequired,
+  application: PropTypes.shape({
+    chatAudioAlerts: PropTypes.bool,
+    chatPushAlerts: PropTypes.bool,
+    userJoinAudioAlerts: PropTypes.bool,
+    userLeaveAudioAlerts: PropTypes.bool,
+    userLeavePushAlerts: PropTypes.bool,
+    guestWaitingAudioAlerts: PropTypes.bool,
+    guestWaitingPushAlerts: PropTypes.bool,
+    paginationEnabled: PropTypes.bool,
+    darkTheme: PropTypes.bool,
+    fallbackLocale: PropTypes.string,
+    fontSize: PropTypes.string,
+    locale: PropTypes.string,
+    microphoneConstraints: PropTypes.objectOf(Object),
+  }).isRequired,
+  updateSettings: PropTypes.func.isRequired,
+  availableLocales: PropTypes.objectOf(PropTypes.array).isRequired,
+  mountModal: PropTypes.func.isRequired,
+  showToggleLabel: PropTypes.bool.isRequired,
+};
+
+class Settings extends Component {
+  static setHtmlFontSize(size) {
+    document.getElementsByTagName('html')[0].style.fontSize = size;
   }
 
-  renderSettingOptions() {
-    const { isPresenter, role } = this.props;
+  constructor(props) {
+    super(props);
 
-    this.submenus = [];
-    this.submenus.push(
-      { componentName: AudioMenu, tabIndex: 3,
-        props: { title: 'Audio', prependIconName: 'icon-', icon: 'bbb-audio', }, },
-      { componentName: VideoMenu, tabIndex: 4,
-        props: { title: 'Video', prependIconName: 'icon-', icon: 'bbb-video', }, },
-      { componentName: ApplicationMenu, tabIndex: 5,
-        props: { title: 'Application', prependIconName: 'icon-', icon: 'bbb-application', }, });
+    const {
+      dataSaving, application, selectedTab,
+    } = props;
 
-    if (isPresenter || role === 'MODERATOR') {
-      this.submenus.push(
-        { componentName: UsersMenu, tabIndex: 6,
-          props: { title: 'Participants', prependIconName: 'icon-', icon: 'bbb-user', }, });
+    this.state = {
+      current: {
+        dataSaving: _.clone(dataSaving),
+        application: _.clone(application),
+      },
+      saved: {
+        dataSaving: _.clone(dataSaving),
+        application: _.clone(application),
+      },
+      selectedTab: _.isFinite(selectedTab) && selectedTab >= 0 && selectedTab <= 2
+        ? selectedTab
+        : 0,
+    };
+
+    this.updateSettings = props.updateSettings;
+    this.handleUpdateSettings = this.handleUpdateSettings.bind(this);
+    this.handleSelectTab = this.handleSelectTab.bind(this);
+    this.displaySettingsStatus = this.displaySettingsStatus.bind(this);
+  }
+
+  componentDidMount() {
+    const { availableLocales } = this.props;
+
+    availableLocales.then((locales) => {
+      this.setState({ allLocales: locales });
+    });
+  }
+
+  handleUpdateSettings(key, newSettings) {
+    const settings = this.state;
+    settings.current[key] = newSettings;
+    this.setState(settings);
+  }
+
+  handleSelectTab(tab) {
+    this.setState({
+      selectedTab: tab,
+    });
+  }
+
+  displaySettingsStatus(status, textOnly = false) {
+    const { intl } = this.props;
+    if (textOnly) {
+      return status ? intl.formatMessage(intlMessages.on)
+          : intl.formatMessage(intlMessages.off)
     }
-
     return (
-      <div className={styles.full} role='presentation'>
-        <div className={styles.settingsMenuLeft}>
-          <ul className={styles.settingsSubmenu} role='menu'>
-            {this.submenus.map((value, index) => (
-              <li key={index} ref={'submenu' + index} role='menuitem' tabIndex={value.tabIndex}
-                onClick={this.handleClickSubmenu.bind(this, index)}
-                onKeyDown={this.handleKeyDown.bind(this)}
-                onFocus={this.handleFocus.bind(this, index)}
-                className={classNames(styles.settingsSubmenuItem,
-                  index == this.state.activeSubmenu ? styles.settingsSubmenuItemActive : null)}>
-                <Icon key={index} prependIconName={value.props.prependIconName}
-                  iconName={value.props.icon} title={value.props.title}/>
-                <span className={styles.settingsSubmenuItemText}>{value.props.title}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-        <div className={styles.settingsMenuRight} role='presentation'>
-          {this.renderMenu()}
-        </div>
-      </div>
+      <Styled.ToggleLabel aria-hidden>
+        {status ? intl.formatMessage(intlMessages.on)
+          : intl.formatMessage(intlMessages.off)}
+      </Styled.ToggleLabel>
     );
   }
 
-  renderMenu() {
-    let curr = this.state.activeSubmenu === undefined ? 0 : this.state.activeSubmenu;
+  renderModalContent() {
+    const {
+      intl,
+      isModerator,
+      isPresenter,
+      showGuestNotification,
+      showToggleLabel,
+      layoutContextDispatch,
+      selectedLayout,
+      isScreenSharingEnabled,
+      isVideoEnabled,
+    } = this.props;
 
-    if (!this.submenus[curr]) {
-      curr = (this.state.activeSubmenu - 1);
-    }
+    const {
+      selectedTab,
+      current,
+      allLocales,
+    } = this.state;
 
-    let props = {
-      title: this.submenus[curr].props.title,
-      prependIconName: this.submenus[curr].props.prependIconName,
-      icon: this.submenus[curr].props.icon,
-      handleIncreaseFontSize: this.props.handleIncreaseFontSize,
-      handleDecreaseFontSize: this.props.handleDecreaseFontSize,
-      handleGetFontSizeName: this.props.handleGetFontSizeName,
-    };
+    const isDataSavingTabEnabled = isScreenSharingEnabled || isVideoEnabled;
 
-    const Submenu = this.submenus[curr].componentName;
-    return <Submenu {...props}/>;
-  }
-
-  /* When an option in the menu is clicked, set the activeSubmenu and focusSubmenu
-   * to the value of index. If clicked out of bounds set to 0 or end of submenus array accordingly.
-   *
-   * activeSubmenu: the submenu to be displayed to the user
-   * focusSubmenu: the submenu to set focus to
-   */
-  handleClickSubmenu(i) {
-    if (i <= 0) {
-      this.setState({ activeSubmenu: 0, focusSubmenu: 0, });
-      return;
-    }
-
-    if (i >= this.submenus.length) {
-      this.setState({ activeSubmenu: this.submenus.length - 1,
-        focusSubmenu: this.submenus.length - 1, });
-      return;
-    } else {
-      this.setState({ activeSubmenu: i, focusSubmenu: i, });
-    }
-  }
-
-  /* calls the focus method on an object in the submenu */
-  setFocus() {
-    ReactDOM.findDOMNode(this.refs[`submenu${this.state.focusSubmenu}`]).focus();
-  }
-
-  /* Checks for key presses within the submenu list. Key behaviour varies.
-   *
-   * Tab: changes focus to next submenu or element outside of menu
-   * Shift+Tab: changes focus to previous submenu or element outside of menu
-   * Up Arrow: changes focus to previous submenu, can cycle through menu
-   * Down Arrow: changes focus to next submenu, can cycle through menu
-   * Spacebar: selects submenu in focus and sets as active
-   * Enter: selects submenu in focus and sets as active
-   */
-  handleKeyDown(event) {
-    // tab
-    if (event.keyCode === 9) {
-      let newIndex = 0;
-      if (this.state.focusSubmenu >= this.submenus.length - 1) {
-        newIndex = this.submenus.length - 1;
-      } else {
-        newIndex = this.state.focusSubmenu + 1;
-      }
-
-      this.setState({ focusSubmenu: newIndex });
-      return;
-    }
-
-    // shift+tab
-    if (event.shiftKey && event.keyCode === 9) {
-      let newIndex = 0;
-      if (this.state.focusSubmenu <= 0) {
-        newIndex = 0;
-      } else {
-        newIndex = this.state.focusSubmenu - 1;
-      }
-
-      this.setState({ focusSubmenu: newIndex });
-      return;
-    }
-
-    // up arrow
-    if (event.keyCode === 38) {
-      if (this.state.focusSubmenu <= 0) {
-        this.setState({ focusSubmenu: this.submenus.length - 1 }, function () {
-          this.setFocus();
-        });
-      } else {
-        this.setState({ focusSubmenu: this.state.focusSubmenu - 1 }, function () {
-          this.setFocus();
-        });
-      }
-
-      return;
-    }
-
-    // down arrow
-    if (event.keyCode === 40) {
-      if (this.state.focusSubmenu >= this.submenus.length - 1) {
-        this.setState({ focusSubmenu: 0 }, function () {
-          this.setFocus();
-        });
-      } else {
-        this.setState({ focusSubmenu: this.state.focusSubmenu + 1 }, function () {
-          this.setFocus();
-        });
-      }
-
-      return;
-    }
-
-    // spacebar or enter
-    if (event.keyCode === 32 || event.keyCode === 13) {
-      this.setState({ activeSubmenu: this.state.focusSubmenu });
-      return;
-    }
-  }
-
-  /* Keeps the focusSubmenu variable at the correct value when
-   * tabbing or shift-tabbing out of the submenu array
-   */
-  handleFocus(index) {
-    this.setState({ focusSubmenu: index });
+    return (
+      <Styled.SettingsTabs
+        onSelect={this.handleSelectTab}
+        selectedIndex={selectedTab}
+        role="presentation"
+      >
+        <Styled.SettingsTabList>
+          <Styled.SettingsTabSelector
+            aria-labelledby="appTab"
+            selectedClassName="is-selected"
+          >
+            <Styled.SettingsIcon iconName="application" />
+            <span id="appTab">{intl.formatMessage(intlMessages.appTabLabel)}</span>
+          </Styled.SettingsTabSelector>
+          <Styled.SettingsTabSelector
+            selectedClassName="is-selected"
+          >
+            <Styled.SettingsIcon iconName="alert" />
+            <span id="notificationTab">{intl.formatMessage(intlMessages.notificationLabel)}</span>
+          </Styled.SettingsTabSelector>
+          {isDataSavingTabEnabled
+            ? (
+              <Styled.SettingsTabSelector
+                aria-labelledby="dataSavingTab"
+                selectedClassName="is-selected"
+              >
+                <Styled.SettingsIcon iconName="network" />
+                <span id="dataSaving">{intl.formatMessage(intlMessages.dataSavingLabel)}</span>
+              </Styled.SettingsTabSelector>
+            )
+            : null}
+        </Styled.SettingsTabList>
+        <Styled.SettingsTabPanel selectedClassName="is-selected">
+          <Application
+            allLocales={allLocales}
+            handleUpdateSettings={this.handleUpdateSettings}
+            settings={current.application}
+            showToggleLabel={showToggleLabel}
+            displaySettingsStatus={this.displaySettingsStatus}
+            layoutContextDispatch={layoutContextDispatch}
+            selectedLayout={selectedLayout}
+            isPresenter={isPresenter}
+          />
+        </Styled.SettingsTabPanel>
+        <Styled.SettingsTabPanel selectedClassName="is-selected">
+          <Notification
+            handleUpdateSettings={this.handleUpdateSettings}
+            settings={current.application}
+            showGuestNotification={showGuestNotification}
+            showToggleLabel={showToggleLabel}
+            displaySettingsStatus={this.displaySettingsStatus}
+            {...{ isModerator }}
+          />
+        </Styled.SettingsTabPanel>
+        {isDataSavingTabEnabled
+          ? (
+            <Styled.SettingsTabPanel selectedClassName="is-selected">
+              <DataSaving
+                settings={current.dataSaving}
+                handleUpdateSettings={this.handleUpdateSettings}
+                showToggleLabel={showToggleLabel}
+                displaySettingsStatus={this.displaySettingsStatus}
+                isScreenSharingEnabled={isScreenSharingEnabled}
+                isVideoEnabled={isVideoEnabled}
+              />
+            </Styled.SettingsTabPanel>
+          )
+          : null}
+      </Styled.SettingsTabs>
+    );
   }
 
   render() {
-
+    const {
+      intl,
+      mountModal,
+    } = this.props;
+    const {
+      current,
+      saved,
+    } = this.state;
     return (
       <Modal
-        title="Settings"
+        title={intl.formatMessage(intlMessages.SettingsLabel)}
         confirm={{
-          callback: (() => {
-            this.setState({ activeSubmenu: 0, focusSubmenu: 0 });
-            console.log('SHOULD APPLY SETTINGS CHANGES');
-            this.props.handleSaveFontState();
-          }),
-          label: 'Save',
-          description: 'Saves the changes and close the settings menu',
+          callback: () => {
+            this.updateSettings(current, intlMessages.savedAlertLabel);
+
+            if (saved.application.locale !== current.application.locale) {
+              const { language } = formatLocaleCode(saved.application.locale);
+              document.body.classList.remove(`lang-${language}`);
+            }
+
+            /* We need to use mountModal(null) here to prevent submenu state updates,
+            *  from re-opening the modal.
+            */
+            mountModal(null);
+          },
+          label: intl.formatMessage(intlMessages.SaveLabel),
+          description: intl.formatMessage(intlMessages.SaveLabelDesc),
         }}
         dismiss={{
-          callback: (() => {
-            this.setState({ activeSubmenu: 0, focusSubmenu: 0 });
-            console.log('SHOULD DISCART SETTINGS CHANGES');
-            this.props.handleRevertFontState();
-          }),
-          label: 'Cancel',
-          description: 'Discart the changes and close the settings menu',
-        }}>
-          {this.renderSettingOptions()}
+          callback: () => {
+            Settings.setHtmlFontSize(saved.application.fontSize);
+            document.getElementsByTagName('html')[0].lang = saved.application.locale;
+            mountModal(null);
+          },
+          label: intl.formatMessage(intlMessages.CancelLabel),
+          description: intl.formatMessage(intlMessages.CancelLabelDesc),
+        }}
+      >
+        {this.renderModalContent()}
       </Modal>
     );
   }
-};
+}
 
-Settings.defaultProps = { title: 'Settings' };
+Settings.propTypes = propTypes;
+export default withModalMounter(injectIntl(Settings));

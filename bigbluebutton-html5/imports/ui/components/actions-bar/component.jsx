@@ -1,70 +1,138 @@
-import React, { Component, PropTypes } from 'react';
-import { showModal } from '/imports/ui/components/app/service';
-import Audio from '/imports/ui/components/audio-modal/component';
-import Button from '/imports/ui/components/button/component';
-import styles from './styles.scss';
-import EmojiContainer from './emoji-menu/container';
-import ActionsDropdown from './actions-dropdown/component';
-import Auth from '/imports/ui/services/auth/index';
-import Users from '/imports/api/users/index';
-import JoinAudioOptionsContainer from './audio-menu/container';
-import MuteAudioContainer from './mute-button/container';
-import { exitAudio } from '/imports/api/phone';
-import JoinVideo from './video-button/component';
+import React, { PureComponent } from 'react';
+import CaptionsButtonContainer from '/imports/ui/components/captions/button/container';
+import withShortcutHelper from '/imports/ui/components/shortcut-help/service';
+import deviceInfo from '/imports/utils/deviceInfo';
+import Styled from './styles';
+import ActionsDropdown from './actions-dropdown/container';
+import AudioCaptionsButtonContainer from '/imports/ui/components/audio/captions/button/container';
+import ScreenshareButtonContainer from '/imports/ui/components/actions-bar/screenshare/container';
+import AudioControlsContainer from '../audio/audio-controls/container';
+import JoinVideoOptionsContainer from '../video-provider/video-button/container';
+import PresentationOptionsContainer from './presentation-options/component';
+import Button from '/imports/ui/components/common/button/component';
 
-const openJoinAudio = () => showModal(<Audio />);
-
-export default class ActionsBar extends Component {
-  constructor(props) {
-    super(props);
-  }
-
-  renderForPresenter() {
-    return (
-      <div className={styles.actionsbar}>
-        <div className={styles.left}>
-          <ActionsDropdown />
-        </div>
-        <div className={styles.center}>
-          <MuteAudioContainer />
-          <JoinAudioOptionsContainer
-            open={openJoinAudio.bind(this)}
-            close={() => {exitAudio();}}
-
-          />
-          {/*<JoinVideo />*/}
-          <EmojiContainer />
-        </div>
-        <div className={styles.right}>
-        </div>
-      </div>
-    );
-  }
-
-  renderForUser() {
-    return (
-      <div className={styles.actionsbar}>
-        <div className={styles.center}>
-          <MuteAudioContainer />
-          <JoinAudioOptionsContainer
-            open={openJoinAudio.bind(this)}
-            close={() => {exitAudio();}}
-
-          />
-          {/*<JoinVideo />*/}
-          <EmojiContainer />
-        </div>
-        <div className={styles.right}>
-        </div>
-      </div>
-    );
-  }
-
+class ActionsBar extends PureComponent {
   render() {
-    const { isUserPresenter } = this.props;
+    const {
+      amIPresenter,
+      amIModerator,
+      enableVideo,
+      presentationIsOpen,
+      setPresentationIsOpen,
+      handleTakePresenter,
+      intl,
+      isSharingVideo,
+      hasScreenshare,
+      stopExternalVideoShare,
+      isCaptionsAvailable,
+      isMeteorConnected,
+      isPollingEnabled,
+      isSelectRandomUserEnabled,
+      isRaiseHandButtonEnabled,
+      isPresentationDisabled,
+      isThereCurrentPresentation,
+      allowExternalVideo,
+      setEmojiStatus,
+      currentUser,
+      shortcuts,
+      layoutContextDispatch,
+      actionsBarStyle,
+      setMeetingLayout,
+      showPushLayout,
+      setPushLayout,
+    } = this.props;
 
-    return isUserPresenter ?
-      this.renderForPresenter() :
-      this.renderForUser();
+    return (
+      <Styled.ActionsBar
+        style={
+          {
+            height: actionsBarStyle.innerHeight,
+          }
+        }
+      >
+        <Styled.Left>
+          <ActionsDropdown {...{
+            amIPresenter,
+            amIModerator,
+            isPollingEnabled,
+            isSelectRandomUserEnabled,
+            allowExternalVideo,
+            handleTakePresenter,
+            intl,
+            isSharingVideo,
+            stopExternalVideoShare,
+            isMeteorConnected,
+            setMeetingLayout,
+            setPushLayout,
+            presentationIsOpen,
+            showPushLayout,
+          }}
+          />
+          {isCaptionsAvailable
+            ? (
+              <CaptionsButtonContainer {...{ intl }} />
+            )
+            : null}
+          { !deviceInfo.isMobile
+            ? (
+              <AudioCaptionsButtonContainer />
+            )
+            : null }
+        </Styled.Left>
+        <Styled.Center>
+          <AudioControlsContainer />
+          {enableVideo
+            ? (
+              <JoinVideoOptionsContainer />
+            )
+            : null}
+          <ScreenshareButtonContainer {...{
+            amIPresenter,
+            isMeteorConnected,
+          }}
+          />
+        </Styled.Center>
+        <Styled.Right>
+          <PresentationOptionsContainer
+            presentationIsOpen={presentationIsOpen}
+            setPresentationIsOpen={setPresentationIsOpen}
+            layoutContextDispatch={layoutContextDispatch}
+            hasPresentation={isThereCurrentPresentation}
+            hasExternalVideo={isSharingVideo}
+            hasScreenshare={hasScreenshare}
+          />
+          {isRaiseHandButtonEnabled
+            ? (
+              <Button
+                icon="hand"
+                label={intl.formatMessage({
+                  id: `app.actionsBar.emojiMenu.${
+                    currentUser.emoji === 'raiseHand'
+                      ? 'lowerHandLabel'
+                      : 'raiseHandLabel'
+                  }`,
+                })}
+                accessKey={shortcuts.raisehand}
+                color={currentUser.emoji === 'raiseHand' ? 'primary' : 'default'}
+                data-test={currentUser.emoji === 'raiseHand' ? 'lowerHandLabel' : 'raiseHandLabel'}
+                ghost={currentUser.emoji !== 'raiseHand'}
+                emoji={currentUser.emoji}
+                hideLabel
+                circle
+                size="lg"
+                onClick={() => {
+                  setEmojiStatus(
+                    currentUser.userId,
+                    currentUser.emoji === 'raiseHand' ? 'none' : 'raiseHand',
+                  );
+                }}
+              />
+            )
+            : null}
+        </Styled.Right>
+      </Styled.ActionsBar>
+    );
   }
 }
+
+export default withShortcutHelper(ActionsBar, ['raiseHand']);

@@ -1,13 +1,14 @@
 import RedisPubSub from '/imports/startup/server/redis';
-
-import handleCreateBreakout from './handlers/createBreakout';
-import handleBreakoutStarted from './handlers/breakoutStarted';
 import handleBreakoutJoinURL from './handlers/breakoutJoinURL';
+import handleBreakoutRoomsList from './handlers/breakoutList';
 import handleUpdateTimeRemaining from './handlers/updateTimeRemaining';
 import handleBreakoutClosed from './handlers/breakoutClosed';
+import joinedUsersChanged from './handlers/joinedUsersChanged';
+import userBreakoutChanged from '/imports/api/breakouts/server/handlers/userBreakoutChanged';
 
-RedisPubSub.on('CreateBreakoutRoomRequest', handleCreateBreakout);
-RedisPubSub.on('BreakoutRoomStarted', handleBreakoutStarted);
-RedisPubSub.on('BreakoutRoomJoinURL', handleBreakoutJoinURL);
-RedisPubSub.on('BreakoutRoomsTimeRemainingUpdate', handleUpdateTimeRemaining);
-RedisPubSub.on('BreakoutRoomClosed', handleBreakoutClosed);
+RedisPubSub.on('BreakoutRoomsListEvtMsg', handleBreakoutRoomsList);
+RedisPubSub.on('BreakoutRoomJoinURLEvtMsg', handleBreakoutJoinURL);
+RedisPubSub.on('BreakoutRoomsTimeRemainingUpdateEvtMsg', handleUpdateTimeRemaining);
+RedisPubSub.on('BreakoutRoomEndedEvtMsg', handleBreakoutClosed);
+RedisPubSub.on('UpdateBreakoutUsersEvtMsg', joinedUsersChanged);
+RedisPubSub.on('ChangeUserBreakoutEvtMsg', userBreakoutChanged);

@@ -1,39 +1,14 @@
-import React, { Component } from 'react';
-import { createContainer } from 'meteor/react-meteor-data';
-import Service from './service.js';
+import React from 'react';
+import { withTracker } from 'meteor/react-meteor-data';
+import getFromUserSettings from '/imports/ui/services/users-settings';
+import Service from '/imports/ui/components/user-list/service';
+import UserList from './component';
 
-import UserList from './component.jsx';
+const UserListContainer = (props) => <UserList {...props} />;
 
-class UserListContainer extends Component {
-  render() {
-    const {
-      compact,
-      users,
-      currentUser,
-      openChats,
-      openChat,
-      userActions,
-      children,
-    } = this.props;
-
-    return (
-      <UserList
-        compact={compact}
-        users={users}
-        currentUser={currentUser}
-        openChats={openChats}
-        openChat={openChat}
-        userActions={userActions}>
-        {children}
-      </UserList>
-    );
+export default withTracker(({ compact }) => (
+  {
+    CustomLogoUrl: Service.getCustomLogoUrl(),
+    showBranding: getFromUserSettings('bbb_display_branding_area', Meteor.settings.public.app.branding.displayBrandingArea),
   }
-}
-
-export default createContainer(({ params }) => ({
-  users: Service.getUsers(),
-  currentUser: Service.getCurrentUser(),
-  openChats: Service.getOpenChats(params.chatID),
-  openChat: params.chatID,
-  userActions: Service.userActions,
-}), UserListContainer);
+))(UserListContainer);

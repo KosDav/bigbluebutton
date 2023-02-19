@@ -1,76 +1,100 @@
+/*
+    BigBlueButton open source conferencing system - http://www.bigbluebutton.org/
+
+    Copyright (c) 2020 BigBlueButton Inc. and by respective authors (see below).
+
+    This program is free software; you can redistribute it and/or modify it under the
+    terms of the GNU Lesser General Public License as published by the Free Software
+    Foundation; either version 3.0 of the License, or (at your option) any later
+    version.
+
+    BigBlueButton is distributed in the hope that it will be useful, but WITHOUT ANY
+    WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+    PARTICULAR PURPOSE. See the GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License along
+    with BigBlueButton; if not, see <http://www.gnu.org/licenses/>.
+*/
+/* eslint no-unused-vars: 0 */
+
 import React from 'react';
 import { Meteor } from 'meteor/meteor';
 import { render } from 'react-dom';
-import { renderRoutes } from '../imports/startup/client/routes.js';
-import { IntlProvider } from 'react-intl';
-import Singleton from '/imports/ui/services/storage/local.js';
+import logger from '/imports/startup/client/logger';
+import '/imports/ui/services/mobile-app';
+import Base from '/imports/startup/client/base';
+import JoinHandler from '/imports/ui/components/join-handler/component';
+import AuthenticatedHandler from '/imports/ui/components/authenticated-handler/component';
+import Subscriptions from '/imports/ui/components/subscriptions/component';
+import IntlStartup from '/imports/startup/client/intl';
+import ContextProviders from '/imports/ui/components/context-providers/component';
+import ChatAdapter from '/imports/ui/components/components-data/chat-context/adapter';
+import UsersAdapter from '/imports/ui/components/components-data/users-context/adapter';
+import GroupChatAdapter from '/imports/ui/components/components-data/group-chat-context/adapter';
+import { liveDataEventBrokerInitializer } from '/imports/ui/services/LiveDataEventBroker/LiveDataEventBroker';
+// The adapter import is "unused" as far as static code is concerned, but it
+// needs to here to override global prototypes. So: don't remove it - prlanzarin 25 Apr 2022
+import adapter from 'webrtc-adapter';
 
-function loadUserSettings() {
-    const userSavedFontSize = Singleton.getItem('bbbSavedFontSizePixels');
+import collectionMirrorInitializer from './collection-mirror-initializer';
 
-    if (userSavedFontSize) {
-      document.getElementsByTagName('html')[0].style.fontSize = userSavedFontSize;
-    }
+import('/imports/api/audio/client/bridge/bridge-whitelist').catch(() => {
+  // bridge loading
+});
+
+const { disableWebsocketFallback } = Meteor.settings.public.app;
+
+if (disableWebsocketFallback) {
+  Meteor.connection._stream._sockjsProtocolsWhitelist = function () { return ['websocket']; }
+
+  Meteor.disconnect();
+  Meteor.reconnect();
 }
 
-function setMessages(data) {
-  let messages = data;
-  let defaultLocale = 'en';
-
-  render((
-    <IntlProvider  locale={defaultLocale} messages={messages}>
-      {renderRoutes()}
-    </IntlProvider>
-  ), document.getElementById('app'));
-}
-
-// Helper to load javascript libraries from the BBB server
-function loadLib(libname, success, fail) {
-  const successCallback = function (cb) {
-    console.log(`successfully loaded lib - ${this}`);
-    if (typeof (cb) == 'function' || cb instanceof Function) {
-      cb();
-    }
-  };
-
-  const failCallback = function (cb, issue) {
-    console.error(`failed to load lib - ${this}`);
-    console.error(issue);
-    if (typeof (cb) == 'function' || cb instanceof Function) {
-      cb();
-    }
-  };
-
-  return Meteor.Loader.loadJs(`${window.location.origin}/client/lib/${libname}`,
-    successCallback.bind(libname, success), 10000).fail(failCallback.bind(libname, fail));
-};
+collectionMirrorInitializer();
+liveDataEventBrokerInitializer();
 
 Meteor.startup(() => {
+  // Logs all uncaught exceptions to the client logger
+  window.addEventListener('error', (e) => {
+    let message = e.message || e.error.toString();
 
-  loadLib('sip.js');
-  loadLib('bbb_webrtc_bridge_sip.js');
-  loadLib('bbblogger.js');
-  loadLib('jquery.json-2.4.min.js');
-  loadLib('jquery.FSRTC.js');
-  loadLib('jquery.verto.js');
-  loadLib('verto_extension.js');
-  loadLib('jquery.jsonrpcclient.js');
+    // Chrome will add on "Uncaught" to the start of the message for some reason. This
+    // will strip that so the errors can hopefully be grouped better.
+    if (message) message = message.replace(/^Uncaught/, '').trim();
 
-  loadUserSettings();
+    let { stack } = e.error;
 
-  let browserLanguage = navigator.language;
-  let request = new Request
-    (`${window.location.origin}/html5client/locale?locale=${browserLanguage}`);
+    // Checks if stack includes the message, if not add the two together.
+    if (!stack.includes(message)) {
+      stack = `${message}\n${stack}`;
+    }
+    logger.error({
+      logCode: 'startup_error',
+      extraInfo: {
+        stackTrace: stack,
+      },
+    }, message);
+  });
 
-  fetch(request, { method: 'GET' })
-    .then(function (response) {
-      return response.json();
-    })
-    .then(function (data) {
-      setMessages(data);
-    })
-    .catch(function error(err) {
-      console.log('request failed', err);
-    });
-
+  // TODO make this a Promise
+  render(
+    <ContextProviders>
+      <React.Fragment>
+        <JoinHandler>
+          <AuthenticatedHandler>
+            <Subscriptions>
+              <IntlStartup>
+                <Base />
+              </IntlStartup>
+            </Subscriptions>
+          </AuthenticatedHandler>
+        </JoinHandler>
+        <UsersAdapter />
+        <ChatAdapter />
+        <GroupChatAdapter />
+      </React.Fragment>
+    </ContextProviders>,
+    document.getElementById('app'),
+  );
 });

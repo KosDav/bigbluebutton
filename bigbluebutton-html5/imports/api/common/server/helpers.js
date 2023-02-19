@@ -1,42 +1,68 @@
-import { logger } from '/imports/startup/server/logger';
-import { redisPubSub } from '/imports/startup/server';
-import { BREAK_LINE, CARRIAGE_RETURN, NEW_LINE } from '/imports/utils/lineEndings.js';
+import Users from '/imports/api/users';
+import Logger from '/imports/startup/server/logger';
 
-export function appendMessageHeader(eventName, messageObj) {
-  let header;
-  header = {
-    timestamp: new Date().getTime(),
-    name: eventName,
-  };
-  messageObj.header = header;
-  return messageObj;
+const MSG_DIRECT_TYPE = 'DIRECT';
+const NODE_USER = 'nodeJSapp';
+
+export const spokeTimeoutHandles = {};
+export const clearSpokeTimeout = (meetingId, userId) => {
+  if (spokeTimeoutHandles[`${meetingId}-${userId}`]) {
+    Meteor.clearTimeout(spokeTimeoutHandles[`${meetingId}-${userId}`]);
+    delete spokeTimeoutHandles[`${meetingId}-${userId}`];
+  }
 };
 
 export const indexOf = [].indexOf || function (item) {
-    for (let i = 0, l = this.length; i < l; i++) {
-      if (i in this && this[i] === item) {
-        return i;
-      }
+  for (let i = 0, l = this.length; i < l; i += 1) {
+    if (i in this && this[i] === item) {
+      return i;
     }
+  }
 
-    return -1;
+  return -1;
+};
+
+export const processForHTML5ServerOnly = (fn) => (message, ...args) => {
+  const { envelope } = message;
+  const { routing } = envelope;
+  const { msgType, meetingId, userId } = routing;
+
+  const selector = {
+    userId,
+    meetingId,
   };
 
-export function publish(channel, message) {
-  return redisPubSub.publish(channel, message.header.name, message.payload, message.header);
+  const user = Users.findOne(selector);
+
+  const shouldSkip = user && msgType === MSG_DIRECT_TYPE && userId !== NODE_USER && user.clientType !== 'HTML5';
+  if (shouldSkip) return () => { };
+  return fn(message, ...args);
 };
 
-// translate '\n' newline character and '\r' carriage
-// returns to '<br/>' breakline character for Flash
-export const translateHTML5ToFlash = function (message) {
-  let result = message;
-  result = result.replace(new RegExp(CARRIAGE_RETURN, 'g'), BREAK_LINE);
-  result = result.replace(new RegExp(NEW_LINE, 'g'), BREAK_LINE);
-  return result;
+export const extractCredentials = (credentials) => {
+  if (!credentials) return {};
+  const credentialsArray = credentials.split('--');
+  const meetingId = credentialsArray[0];
+  const requesterUserId = credentialsArray[1];
+  return { meetingId, requesterUserId };
 };
 
-// when requesting for history information we pass this made up requesterID
-// We want to handle only the reports we requested
-export const inReplyToHTML5Client = function (arg) {
-  return arg.payload.requester_id === 'nodeJSapp';
+// Creates a background job to periodically check the result of the provided function.
+// The provided function is publication-specific and must check the "survival condition" of the publication.
+export const publicationSafeGuard = function (fn, self) {
+  let stopped = false;
+  const periodicCheck = function () {
+    if (stopped) return;
+    if (!fn()) {
+      self.added(self._name, 'publication-stop-marker', { id: 'publication-stop-marker', stopped: true });
+      self.stop();
+    } else Meteor.setTimeout(periodicCheck, 1000);
+  };
+
+  self.onStop(() => {
+    stopped = true;
+    Logger.info(`Publication ${self._name} has stopped in server side`);
+  });
+
+  periodicCheck();
 };

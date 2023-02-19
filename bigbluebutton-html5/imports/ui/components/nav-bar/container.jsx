@@ -1,77 +1,125 @@
-import React, { Component, PropTypes } from 'react';
-import { createContainer } from 'meteor/react-meteor-data';
-import { withRouter } from 'react-router';
-
+import React, { useContext } from 'react';
+import { Meteor } from 'meteor/meteor';
+import { withTracker } from 'meteor/react-meteor-data';
 import Meetings from '/imports/api/meetings';
+import Breakouts from '/imports/api/breakouts';
 import Auth from '/imports/ui/services/auth';
-import userListService from '../user-list/service';
-import ChatService from '../chat/service';
-import Service from './service';
-
+import getFromUserSettings from '/imports/ui/services/users-settings';
+import userListService from '/imports/ui/components/user-list/service';
+import { ChatContext } from '/imports/ui/components/components-data/chat-context/context';
+import { GroupChatContext } from '/imports/ui/components/components-data/group-chat-context/context';
+import { UsersContext } from '/imports/ui/components/components-data/users-context/context';
+import NotesService from '/imports/ui/components/notes/service';
 import NavBar from './component';
+import { layoutSelectInput, layoutSelectOutput, layoutDispatch } from '../layout/context';
+import { PANELS } from '/imports/ui/components/layout/enums';
 
-const CHAT_CONFIG = Meteor.settings.public.chat;
-const PUBLIC_CHAT_KEY = CHAT_CONFIG.public_id;
+const PUBLIC_CONFIG = Meteor.settings.public;
+const ROLE_MODERATOR = PUBLIC_CONFIG.user.role_moderator;
 
-class NavBarContainer extends Component {
-  constructor(props) {
-    super(props);
-  }
+const checkUnreadMessages = ({
+  groupChatsMessages, groupChats, users, idChatOpen,
+}) => {
+  const activeChats = userListService.getActiveChats({ groupChatsMessages, groupChats, users });
+  const hasUnreadMessages = activeChats
+    .filter((chat) => chat.userId !== idChatOpen)
+    .some((chat) => chat.unreadCounter > 0);
 
-  render() {
-    return (
-      <NavBar {...this.props}>
-        {this.props.children}
-      </NavBar>
-    );
-  }
-}
+  return hasUnreadMessages;
+};
 
-export default withRouter(createContainer(({ location, router }) => {
-  let meetingTitle;
-  let meetingRecorded;
+const NavBarContainer = ({ children, ...props }) => {
+  const usingChatContext = useContext(ChatContext);
+  const usingUsersContext = useContext(UsersContext);
+  const usingGroupChatContext = useContext(GroupChatContext);
+  const { chats: groupChatsMessages } = usingChatContext;
+  const { users } = usingUsersContext;
+  const { groupChat: groupChats } = usingGroupChatContext;
+  const activeChats = userListService.getActiveChats({ groupChatsMessages, groupChats, users:users[Auth.meetingID] });
+  const { unread, ...rest } = props;
 
+  const sidebarContent = layoutSelectInput((i) => i.sidebarContent);
+  const sidebarNavigation = layoutSelectInput((i) => i.sidebarNavigation);
+  const navBar = layoutSelectOutput((i) => i.navBar);
+  const layoutContextDispatch = layoutDispatch();
+  const sharedNotes = layoutSelectInput((i) => i.sharedNotes);
+  const { isPinned: notesIsPinned } = sharedNotes;
+
+  const { sidebarContentPanel } = sidebarContent;
+  const { sidebarNavPanel } = sidebarNavigation;
+
+  const hasUnreadNotes = sidebarContentPanel !== PANELS.SHARED_NOTES && unread && !notesIsPinned;
+  const hasUnreadMessages = checkUnreadMessages(
+    { groupChatsMessages, groupChats, users: users[Auth.meetingID] },
+  );
+
+  const isExpanded = !!sidebarContentPanel || !!sidebarNavPanel;
+
+  const currentUser = users[Auth.meetingID][Auth.userID];
+  const amIModerator = currentUser.role === ROLE_MODERATOR;
+
+  const hideNavBar = getFromUserSettings('bbb_hide_nav_bar', false);
+
+  if (hideNavBar || navBar.display === false) return null;
+
+  return (
+    <NavBar
+      {...{
+        amIModerator,
+        hasUnreadMessages,
+        hasUnreadNotes,
+        sidebarNavPanel,
+        sidebarContentPanel,
+        sidebarNavigation,
+        sidebarContent,
+        layoutContextDispatch,
+        isExpanded,
+        activeChats,
+        ...rest,
+      }}
+      style={{ ...navBar }}
+    >
+      {children}
+    </NavBar>
+  );
+};
+
+export default withTracker(() => {
+  const CLIENT_TITLE = getFromUserSettings('bbb_client_title', PUBLIC_CONFIG.app.clientTitle);
+  const unread = NotesService.hasUnreadNotes();
+
+  let meetingTitle, breakoutNum, breakoutName, meetingName;
   const meetingId = Auth.meetingID;
   const meetingObject = Meetings.findOne({
-    meetingId: meetingId,
-  });
+    meetingId,
+  }, { fields: { 'meetingProp.name': 1, 'breakoutProps.sequence': 1, meetingId: 1 } });
 
   if (meetingObject != null) {
-    meetingTitle = meetingObject.meetingName;
-    meetingRecorded = meetingObject.currentlyBeingRecorded;
+    meetingTitle = meetingObject.meetingProp.name;
+    let titleString = `${CLIENT_TITLE} - ${meetingTitle}`;
+    document.title = titleString;
+
+    if (meetingObject.breakoutProps) {
+      breakoutNum = meetingObject.breakoutProps.sequence;
+      if (breakoutNum > 0) {
+        const breakoutObject = Breakouts.findOne({
+          breakoutId: meetingObject.meetingId,
+        }, { fields: { shortName: 1 } });
+        if (breakoutObject) {
+          breakoutName = breakoutObject.shortName;
+          meetingName = meetingTitle.replace(`(${breakoutName})`, '').trim();
+        }
+      }
+    }
   }
 
-  const checkUnreadMessages = () => {
-    let users = userListService.getUsers();
-
-    // 1.map every user id
-    // 2.filter the user except the current user from the user array
-    // 3.add the public chat to the array
-    // 4.check current user has unread messages or not.
-    return users
-      .map(user => user.id)
-      .filter(userID => userID !== Auth.userID)
-      .concat(PUBLIC_CHAT_KEY)
-      .some(receiverID => ChatService.hasUnreadMessages(receiverID));
-  };
-
-  const breakouts = Service.getBreakouts();
-  const currentUserId = Auth.getCredentials().requesterUserId;
-
   return {
-    breakouts,
-    currentUserId,
+    currentUserId: Auth.userID,
     meetingId,
-    getBreakoutJoinURL: Service.getBreakoutJoinURL,
     presentationTitle: meetingTitle,
-    hasUnreadMessages: checkUnreadMessages(),
-    beingRecorded: meetingRecorded,
-    toggleUserList: () => {
-      if (location.pathname.indexOf('/users') !== -1) {
-        router.push('/');
-      } else {
-        router.push('/users');
-      }
-    },
+    breakoutNum,
+    breakoutName,
+    meetingName,
+    unread,
   };
-}, NavBarContainer));
+})(NavBarContainer);
