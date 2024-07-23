@@ -67,12 +67,13 @@ events = Nokogiri::XML(File.open("#{raw_archive_dir}/events.xml"))
 initial_timestamp = BigBlueButton::Events.first_event_timestamp(events)
 final_timestamp = BigBlueButton::Events.last_event_timestamp(events)
 duration = BigBlueButton::Events.get_recording_length(events)
+participants = BigBlueButton::Events.get_num_participants(events)
 metadata = events.at_xpath('/recording/metadata')
 
 logger.info 'Generating video events list'
 
 # Webcams
-webcam_edl = BigBlueButton::Events.create_webcam_edl(events, raw_archive_dir, false)
+webcam_edl = BigBlueButton::Events.create_webcam_edl(events, raw_archive_dir, props['show_moderator_viewpoint'])
 logger.debug 'Webcam EDL:'
 BigBlueButton::EDL::Video.dump(webcam_edl)
 
@@ -97,6 +98,14 @@ if have_webcams
   logger.info('Webcams were use in this session')
 else
   logger.info('No webcams were used in this session')
+end
+
+logger.info('Checking whether desktop sharing was used')
+have_deskshare = BigBlueButton::Events.have_deskshare_events(events)
+if have_deskshare
+  logger.info('Desktop sharing was used in this session')
+else
+  logger.info('No desktop sharing was used in this session')
 end
 
 logger.info 'Checking whether the presentation area was used'
@@ -177,12 +186,14 @@ end
 
 # Select the layout based on what video sections are available
 layout = \
-  if have_presentation && have_webcams
-    video_props['layout']
-  elsif have_presentation
-    video_props['nowebcam_layout']
+  if have_webcams
+    if have_presentation || have_deskshare
+      video_props['layout']
+    else
+      video_props['nopresentation_layout']
+    end
   else
-    video_props['nopresentation_layout']
+    video_props['nowebcam_layout']
   end
 
 layout.symbolize_keys!
@@ -271,9 +282,10 @@ metadata_xml = Nokogiri::XML::Builder.new do |xml|
     xml.published('true')
     xml.start_time(start_real_time)
     xml.end_time(start_real_time + final_timestamp - initial_timestamp)
+    xml.participants(participants)
     xml.playback do
       xml.format('video')
-      xml.link("http://#{props['playback_host']}/playback/video/#{meeting_id}/")
+      xml.link("#{props['playback_protocol']}://#{props['playback_host']}/playback/video/#{meeting_id}/")
       xml.duration(duration)
     end
     xml.meta do

@@ -1,32 +1,16 @@
-import { Meteor } from 'meteor/meteor';
-import { withTracker } from 'meteor/react-meteor-data';
 import React, { useEffect } from 'react';
-import { defineMessages, injectIntl } from 'react-intl';
-import _ from 'lodash';
-import Auth from '/imports/ui/services/auth';
-import { MeetingTimeRemaining } from '/imports/api/meetings';
-import Meetings from '/imports/api/meetings';
-import BreakoutRemainingTime from '/imports/ui/components/breakout-room/breakout-remaining-time/container';
-import Styled from './styles';
+import { defineMessages, useIntl } from 'react-intl';
+import { isEmpty } from 'radash';
+import MeetingRemainingTime from '/imports/ui/components/common/remaining-time/meeting-duration/component';
+import { useReactiveVar } from '@apollo/client';
 import { layoutSelectInput, layoutDispatch } from '../layout/context';
 import { ACTIONS } from '../layout/enums';
 
-import breakoutService from '/imports/ui/components/breakout-room/service';
 import NotificationsBar from './component';
+import connectionStatus from '../../core/graphql/singletons/connectionStatus';
+import useMeeting from '../../core/hooks/useMeeting';
 
 // disconnected and trying to open a new connection
-const STATUS_CONNECTING = 'connecting';
-
-// permanently failed to connect; e.g., the client and server support different versions of DDP
-const STATUS_FAILED = 'failed';
-
-// failed to connect and waiting to try to reconnect
-const STATUS_WAITING = 'waiting';
-
-const METEOR_SETTINGS_APP = Meteor.settings.public.app;
-
-const REMAINING_TIME_THRESHOLD = METEOR_SETTINGS_APP.remainingTimeThreshold;
-
 const intlMessages = defineMessages({
   failedMessage: {
     id: 'app.failedMessage',
@@ -40,29 +24,13 @@ const intlMessages = defineMessages({
     id: 'app.waitingMessage',
     description: 'Notification message for disconnection with reconnection counter',
   },
-  retryNow: {
-    id: 'app.retryNow',
-    description: 'Retry now text for reconnection counter',
-  },
-  breakoutTimeRemaining: {
-    id: 'app.breakoutTimeRemainingMessage',
-    description: 'Message that tells how much time is remaining for the breakout room',
-  },
-  breakoutWillClose: {
-    id: 'app.breakoutWillCloseMessage',
-    description: 'Message that tells time has ended and breakout will close',
+  reconnectingMessage: {
+    id: 'app.reconnectingMessage',
+    description: 'Notification message for disconnection',
   },
   calculatingBreakoutTimeRemaining: {
     id: 'app.calculatingBreakoutTimeRemaining',
     description: 'Message that tells that the remaining time is being calculated',
-  },
-  meetingTimeRemaining: {
-    id: 'app.meeting.meetingTimeRemaining',
-    description: 'Message that tells how much time is remaining for the meeting',
-  },
-  meetingWillClose: {
-    id: 'app.meeting.meetingTimeHasEnded',
-    description: 'Message that tells time has ended and meeting will close',
   },
   alertMeetingEndsUnderMinutes: {
     id: 'app.meeting.alertMeetingEndsUnderMinutes',
@@ -72,10 +40,63 @@ const intlMessages = defineMessages({
     id: 'app.meeting.alertBreakoutEndsUnderMinutes',
     description: 'Alert that tells that the breakout ends under x minutes',
   },
+  serverIsNotResponding: {
+    id: 'app.serverIsNotResponding',
+    description: 'Alert that tells that server is not responding',
+  },
+  serverIsSlow: {
+    id: 'app.serverIsSlow',
+    description: 'Alert that tells that server is slow',
+  },
 });
 
-const NotificationsBarContainer = (props) => {
-  const { message, color } = props;
+const NotificationsBarContainer = () => {
+  const data = {};
+  data.alert = true;
+  data.color = 'primary';
+  const intl = useIntl();
+  const connected = useReactiveVar(connectionStatus.getConnectedStatusVar());
+  const serverIsResponding = useReactiveVar(connectionStatus.getServerIsRespondingVar());
+  const pingIsComing = useReactiveVar(connectionStatus.getPingIsComingVar());
+  const lastRttRequestSuccess = useReactiveVar(connectionStatus.getLastRttRequestSuccessVar());
+  // if connection failed x attempts a error will be thrown
+  if (
+    !connected
+    || !serverIsResponding
+    || !pingIsComing
+  ) {
+    data.color = 'primary';
+    data.message = (
+      <>
+        {!connected && intl.formatMessage(intlMessages.reconnectingMessage)}
+        {(connected && !serverIsResponding && lastRttRequestSuccess)
+          && intl.formatMessage(intlMessages.serverIsNotResponding)}
+        {(connected && serverIsResponding && !pingIsComing && lastRttRequestSuccess)
+          && intl.formatMessage(intlMessages.serverIsSlow)}
+      </>
+    );
+  }
+
+  const { data: meeting } = useMeeting((m) => ({
+    isBreakout: m.isBreakout,
+    componentsFlags: m.componentsFlags,
+  }));
+
+  if (meeting?.isBreakout) {
+    data.message = (
+      <MeetingRemainingTime />
+    );
+  }
+
+  if (meeting) {
+    const { isBreakout, componentsFlags } = meeting;
+
+    if (componentsFlags.showRemainingTime && !isBreakout) {
+      data.message = (
+        <MeetingRemainingTime />
+      );
+    }
+  }
 
   const notificationsBar = layoutSelectInput((i) => i.notificationsBar);
   const layoutContextDispatch = layoutDispatch();
@@ -83,7 +104,7 @@ const NotificationsBarContainer = (props) => {
   const { hasNotification } = notificationsBar;
 
   useEffect(() => {
-    const localHasNotification = !!message;
+    const localHasNotification = !!data.message;
 
     if (localHasNotification !== hasNotification) {
       layoutContextDispatch({
@@ -91,123 +112,17 @@ const NotificationsBarContainer = (props) => {
         value: localHasNotification,
       });
     }
-  }, [message, hasNotification]);
+  }, [data.message, hasNotification]);
 
-  if (_.isEmpty(message)) {
+  if (isEmpty(data.message)) {
     return null;
   }
 
   return (
-    <NotificationsBar color={color}>
-      {message}
+    <NotificationsBar color={data.color}>
+      {data.message}
     </NotificationsBar>
   );
 };
 
-let retrySeconds = 0;
-const retrySecondsDep = new Tracker.Dependency();
-let retryInterval = null;
-
-const getRetrySeconds = () => {
-  retrySecondsDep.depend();
-  return retrySeconds;
-};
-
-const setRetrySeconds = (sec = 0) => {
-  if (sec !== retrySeconds) {
-    retrySeconds = sec;
-    retrySecondsDep.changed();
-  }
-};
-
-const startCounter = (sec, set, get, interval) => {
-  clearInterval(interval);
-  set(sec);
-  return setInterval(() => {
-    set(get() - 1);
-  }, 1000);
-};
-
-const reconnect = () => {
-  Meteor.reconnect();
-};
-
-export default injectIntl(withTracker(({ intl }) => {
-  const { status, connected, retryTime } = Meteor.status();
-  const data = {};
-
-  if (!connected) {
-    data.color = 'primary';
-    switch (status) {
-      case STATUS_FAILED: {
-        data.color = 'danger';
-        data.message = intl.formatMessage(intlMessages.failedMessage);
-        break;
-      }
-      case STATUS_CONNECTING: {
-        data.message = intl.formatMessage(intlMessages.connectingMessage);
-        break;
-      }
-      case STATUS_WAITING: {
-        const sec = Math.round((retryTime - (new Date()).getTime()) / 1000);
-        retryInterval = startCounter(sec, setRetrySeconds, getRetrySeconds, retryInterval);
-        data.message = (
-          <>
-            {intl.formatMessage(intlMessages.waitingMessage, { 0: getRetrySeconds() })}
-            <Styled.RetryButton type="button" onClick={reconnect}>
-              {intl.formatMessage(intlMessages.retryNow)}
-            </Styled.RetryButton>
-          </>
-        );
-        break;
-      }
-      default:
-        break;
-    }
-
-    return data;
-  }
-
-  const meetingId = Auth.meetingID;
-  const breakouts = breakoutService.getBreakouts();
-
-  if (breakouts.length > 0) {
-    const currentBreakout = breakouts.find((b) => b.breakoutId === meetingId);
-
-    if (currentBreakout) {
-      data.message = (
-        <BreakoutRemainingTime
-          breakoutRoom={currentBreakout}
-          messageDuration={intlMessages.breakoutTimeRemaining}
-          timeEndedMessage={intlMessages.breakoutWillClose}
-          displayAlerts={true}
-        />
-      );
-    }
-  }
-
-  const meetingTimeRemaining = MeetingTimeRemaining.findOne({ meetingId });
-  const Meeting = Meetings.findOne({ meetingId },
-    { fields: { 'meetingProp.isBreakout': 1 } });
-
-  if (meetingTimeRemaining && Meeting) {
-    const { timeRemaining } = meetingTimeRemaining;
-    const { isBreakout } = Meeting.meetingProp;
-    const underThirtyMin = timeRemaining && timeRemaining <= (REMAINING_TIME_THRESHOLD * 60);
-
-    if (underThirtyMin && !isBreakout) {
-      data.message = (
-        <BreakoutRemainingTime
-          breakoutRoom={meetingTimeRemaining}
-          messageDuration={intlMessages.meetingTimeRemaining}
-          timeEndedMessage={intlMessages.meetingWillClose}
-          displayAlerts={true}
-        />
-      );
-    }
-  }
-
-  data.alert = true;
-  data.color = 'primary';
-  return data;
-})(NotificationsBarContainer));
+export default NotificationsBarContainer;

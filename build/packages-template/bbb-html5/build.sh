@@ -25,8 +25,7 @@ mkdir -p staging/usr/share/bigbluebutton/nginx
 cp bbb-html5.nginx staging/usr/share/bigbluebutton/nginx
 
 mkdir -p staging/etc/nginx/conf.d
-cp bbb-html5-loadbalancer.conf staging/etc/nginx/conf.d
-
+cp bbb-html5-conn-limit.conf staging/etc/nginx/conf.d
 
 mkdir -p staging/etc/systemd/system
 cp mongod.service staging/etc/systemd/system
@@ -72,33 +71,23 @@ npm i
 cd -
 cp -r /tmp/html5-build/bundle staging/usr/share/meteor
 
-# copy over tl;draw fonts due to a preset path
-mkdir -p staging/usr/share/meteor/bundle/programs/web.browser/app/files
-cp node_modules/@fontsource/*/files/*.woff[2] staging/usr/share/meteor/bundle/programs/web.browser/app/files/
-
-cp systemd_start.sh staging/usr/share/meteor/bundle
-chmod +x staging/usr/share/meteor/bundle/systemd_start.sh
-
-cp systemd_start_frontend.sh staging/usr/share/meteor/bundle
-chmod +x staging/usr/share/meteor/bundle/systemd_start_frontend.sh
+# generate index.json locales file if it does not exist
+if [ ! -f staging/usr/share/meteor/bundle/programs/web.browser/app/locales/index.json ]; then
+  find staging/usr/share/meteor/bundle/programs/web.browser/app/locales -maxdepth 1 -type f -name "*.json" -exec basename {} \; | awk 'BEGIN{printf "["}{printf "\"%s\", ", $0}END{print "]"}' | sed 's/, ]/]/' > staging/usr/share/meteor/bundle/programs/web.browser/app/locales/index.json
+fi
 
 cp workers-start.sh staging/usr/share/meteor/bundle
-chmod +x staging/usr/share/meteor/bundle/workers-start.sh
-
-cp bbb-html5-with-roles.conf staging/usr/share/meteor/bundle
+chmod +rx staging/usr/share/meteor/bundle/workers-start.sh
 
 cp mongod_start_pre.sh staging/usr/share/meteor/bundle
-chmod +x staging/usr/share/meteor/bundle/mongod_start_pre.sh
+chmod +rx staging/usr/share/meteor/bundle/mongod_start_pre.sh
 
 cp mongo-ramdisk.conf staging/usr/share/meteor/bundle
+# cp mongo-ramdisk.conf staging/etc/mongod.conf
 
 mkdir -p staging/usr/lib/systemd/system
 cp bbb-html5.service staging/usr/lib/systemd/system
 cp disable-transparent-huge-pages.service staging/usr/lib/systemd/system
-
-cp bbb-html5-backend@.service staging/usr/lib/systemd/system
-cp bbb-html5-frontend@.service staging/usr/lib/systemd/system
-
 
 mkdir -p staging/usr/share
 
@@ -136,5 +125,4 @@ fpm -s dir -C ./staging -n $PACKAGE \
     --after-remove after-remove.sh \
     --description "The HTML5 components for BigBlueButton" \
     $DIRECTORIES \
-    $OPTS \
-    -d 'yq (>= 3)' -d 'yq (<< 4)'
+    $OPTS

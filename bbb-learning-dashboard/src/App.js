@@ -17,6 +17,7 @@ import UserDetails from './components/UserDetails/component';
 import { UserDetailsContext } from './components/UserDetails/context';
 import StatusTable from './components/StatusTable';
 import PollsTable from './components/PollsTable';
+import PluginsTable from './components/PluginsTable';
 import ErrorMessage from './components/ErrorMessage';
 import { makeUserCSVData, tsToHHmmss } from './services/UserService';
 
@@ -54,8 +55,11 @@ class App extends React.Component {
     const { intl } = this.props;
     const { activitiesJson } = this.state;
     const {
-      name: meetingName, createdOn, users, polls,
+      name: meetingName, createdOn, users, polls, downloadSessionDataEnabled,
     } = activitiesJson;
+
+    if (downloadSessionDataEnabled === false) return;
+
     const link = document.createElement('a');
     const data = makeUserCSVData(users, polls, intl);
     const filename = `LearningDashboard_${meetingName}_${new Date(createdOn).toISOString().substr(0, 10)}.csv`.replace(/ /g, '-');
@@ -226,6 +230,23 @@ class App extends React.Component {
     } = this.state;
     const { intl } = this.props;
 
+    const genericDataCardTitle = activitiesJson?.genericDataTitles?.[0];
+    // This line generates an array of all the plugin entries of all users,
+    // this might have duplicate entries:
+    const genericDataColumnTitleWithDuplicates = Object.values(
+      activitiesJson.users || {}, // Hardcoded for now, we will add cards relative to this key.
+    ).flatMap((
+      user,
+    ) => user.genericData?.[genericDataCardTitle]).filter((
+      genericDataListForSpecificUser,
+    ) => !!(
+      genericDataListForSpecificUser?.columnTitle)).map((
+      genericDataListForSpecificUser,
+    ) => genericDataListForSpecificUser?.columnTitle);
+    // This line will eliminate duplicates.
+    const genericDataColumnTitleList = [...new Set(genericDataColumnTitleWithDuplicates)];
+    console.log('teste aqui ----> ', activitiesJson, genericDataColumnTitleList);
+
     document.title = `${intl.formatMessage({ id: 'app.learningDashboard.bigbluebuttonTitle', defaultMessage: 'BigBlueButton' })} - ${intl.formatMessage({ id: 'app.learningDashboard.dashboardTitle', defaultMessage: 'Learning Analytics Dashboard' })} - ${activitiesJson.name}`;
 
     function totalOfEmojis() {
@@ -346,7 +367,7 @@ class App extends React.Component {
           </h1>
           <div className="mt-3 col-text-right py-1 text-gray-500 inline-block">
             <p className="font-bold">
-              <div className="inline">
+              <div className="inline" data-test="meetingDateDashboard">
                 <FormattedDate
                   value={activitiesJson.createdOn}
                   year="numeric"
@@ -359,7 +380,7 @@ class App extends React.Component {
                 activitiesJson.endedOn > 0
                   ? (
                     <span className="px-2 py-1 font-semibold leading-tight text-red-700 bg-red-100 rounded-full">
-                      <FormattedMessage id="app.learningDashboard.indicators.meetingStatusEnded" defaultMessage="Ended" />
+                      <FormattedMessage id="app.learningDashboard.indicators.meetingStatusEnded" defaultMessage="Ended" data-test="meetingStatusEndedDashboard" />
                     </span>
                   )
                   : null
@@ -367,14 +388,14 @@ class App extends React.Component {
               {
                 activitiesJson.endedOn === 0
                   ? (
-                    <span className="px-2 py-1 font-semibold leading-tight text-green-700 bg-green-100 rounded-full">
+                    <span className="px-2 py-1 font-semibold leading-tight text-green-700 bg-green-100 rounded-full" data-test="meetingStatusActiveDashboard">
                       <FormattedMessage id="app.learningDashboard.indicators.meetingStatusActive" defaultMessage="Active" />
                     </span>
                   )
                   : null
               }
             </p>
-            <p>
+            <p data-test="meetingDurationTimeDashboard">
               <FormattedMessage id="app.learningDashboard.indicators.duration" defaultMessage="Duration" />
               :&nbsp;
               {tsToHHmmss(totalOfActivity())}
@@ -389,7 +410,7 @@ class App extends React.Component {
           }}
         >
           <TabsListUnstyled className="grid gap-6 mb-8 md:grid-cols-2 xl:grid-cols-4">
-            <TabUnstyled className="rounded focus:outline-none focus:ring focus:ring-pink-500 ring-offset-2">
+            <TabUnstyled className="rounded focus:outline-none focus:ring focus:ring-pink-500 ring-offset-2" data-test="activeUsersPanelDashboard">
               <Card>
                 <CardContent classes={{ root: '!p-0' }}>
                   <CardBody
@@ -420,7 +441,7 @@ class App extends React.Component {
                 </CardContent>
               </Card>
             </TabUnstyled>
-            <TabUnstyled className="rounded focus:outline-none focus:ring focus:ring-green-500 ring-offset-2">
+            <TabUnstyled className="rounded focus:outline-none focus:ring focus:ring-green-500 ring-offset-2" data-test="activityScorePanelDashboard">
               <Card>
                 <CardContent classes={{ root: '!p-0' }}>
                   <CardBody
@@ -430,7 +451,7 @@ class App extends React.Component {
                       maximumFractionDigits: 1,
                     })}
                     cardClass={tab === TABS.OVERVIEW_ACTIVITY_SCORE ? 'border-green-500' : 'hover:border-green-500 border-white'}
-                    iconClass="bg-green-200 text-green-500"
+                    iconClass="bg-green-200 text-green-700"
                   >
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
@@ -456,7 +477,7 @@ class App extends React.Component {
                 </CardContent>
               </Card>
             </TabUnstyled>
-            <TabUnstyled className="rounded focus:outline-none focus:ring focus:ring-purple-500 ring-offset-2">
+            <TabUnstyled className="rounded focus:outline-none focus:ring focus:ring-purple-500 ring-offset-2" data-test="timelinePanelDashboard">
               <Card>
                 <CardContent classes={{ root: '!p-0' }}>
                   <CardBody
@@ -470,7 +491,7 @@ class App extends React.Component {
                 </CardContent>
               </Card>
             </TabUnstyled>
-            <TabUnstyled className="rounded focus:outline-none focus:ring focus:ring-blue-500 ring-offset-2">
+            <TabUnstyled className="rounded focus:outline-none focus:ring focus:ring-blue-500 ring-offset-2" data-test="pollsPanelDashboard">
               <Card>
                 <CardContent classes={{ root: '!p-0' }}>
                   <CardBody
@@ -497,6 +518,35 @@ class App extends React.Component {
                 </CardContent>
               </Card>
             </TabUnstyled>
+            {genericDataColumnTitleList.length && (
+              <TabUnstyled className="rounded focus:outline-none focus:ring focus:ring-red-500 ring-offset-2" data-test="pluginsPanelDashboard">
+                <Card>
+                  <CardContent classes={{ root: '!p-0' }}>
+                    <CardBody
+                      name={genericDataCardTitle}
+                      number={genericDataColumnTitleList.length}
+                      cardClass={tab === TABS.POLLING ? 'border-red-500' : 'hover:border-red-500 border-white'}
+                      iconClass="bg-red-100 text-red-500"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-6 w-6"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"
+                        />
+                      </svg>
+                    </CardBody>
+                  </CardContent>
+                </Card>
+              </TabUnstyled>
+            )}
           </TabsListUnstyled>
           <TabPanelUnstyled value={0}>
             <h2 className="block my-2 pr-2 text-xl font-semibold">
@@ -552,12 +602,26 @@ class App extends React.Component {
               </div>
             </div>
           </TabPanelUnstyled>
+          <TabPanelUnstyled value={4}>
+            <h2 className="block my-2 pr-2 text-xl font-semibold">
+              {genericDataCardTitle}
+            </h2>
+            <div className="w-full overflow-hidden rounded-md shadow-xs border-2 border-gray-100">
+              <div className="w-full overflow-x-auto">
+                <PluginsTable
+                  genericDataCardTitle={genericDataCardTitle}
+                  genericDataColumnTitleList={genericDataColumnTitleList}
+                  allUsers={activitiesJson.users}
+                />
+              </div>
+            </div>
+          </TabPanelUnstyled>
         </TabsUnstyled>
         <UserDetails dataJson={activitiesJson} />
         <hr className="my-8" />
         <div className="flex justify-between pb-8 text-xs text-gray-800 dark:text-gray-400 whitespace-nowrap flex-col sm:flex-row">
           <div className="flex flex-col justify-center mb-4 sm:mb-0">
-            <p>
+            <p className="text-gray-700">
               {
                 lastUpdated && (
                   <>
@@ -581,16 +645,23 @@ class App extends React.Component {
               }
             </p>
           </div>
-          <button
-            type="button"
-            className="border-2 border-gray-200 rounded-md px-4 py-2 bg-white focus:outline-none focus:ring ring-offset-2 focus:ring-gray-500 focus:ring-opacity-50"
-            onClick={this.handleSaveSessionData.bind(this)}
-          >
-            <FormattedMessage
-              id="app.learningDashboard.downloadSessionDataLabel"
-              defaultMessage="Download Session Data"
-            />
-          </button>
+          {
+            (activitiesJson.downloadSessionDataEnabled || false)
+              ? (
+                <button
+                  data-test="downloadSessionDataDashboard"
+                  type="button"
+                  className="border-2 text-gray-700 border-gray-200 rounded-md px-4 py-2 bg-white focus:outline-none focus:ring ring-offset-2 focus:ring-gray-500 focus:ring-opacity-50"
+                  onClick={this.handleSaveSessionData.bind(this)}
+                >
+                  <FormattedMessage
+                    id="app.learningDashboard.downloadSessionDataLabel"
+                    defaultMessage="Download Session Data"
+                  />
+                </button>
+              )
+              : null
+          }
         </div>
       </div>
     );

@@ -7,7 +7,7 @@ trait UsersApp2x
   with LockUserInMeetingCmdMsgHdlr
   with LockUsersInMeetingCmdMsgHdlr
   with GetLockSettingsReqMsgHdlr
-  with ChangeUserEmojiCmdMsgHdlr {
+  with ClearAllUsersReactionCmdMsgHdlr {
 
   this: MeetingActor =>
 

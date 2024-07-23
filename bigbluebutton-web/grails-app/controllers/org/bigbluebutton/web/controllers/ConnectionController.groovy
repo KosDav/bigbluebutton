@@ -18,10 +18,16 @@
 */
 package org.bigbluebutton.web.controllers
 
+import groovy.json.JsonBuilder
 import org.bigbluebutton.api.MeetingService
+import org.bigbluebutton.api.domain.Meeting
 import org.bigbluebutton.api.domain.UserSession
+import org.bigbluebutton.api.domain.User
+import org.bigbluebutton.api.domain.UserSessionBasicData
 import org.bigbluebutton.api.util.ParamsUtil
 import org.bigbluebutton.api.ParamsProcessorUtil
+import java.nio.charset.StandardCharsets
+
 
 class ConnectionController {
   MeetingService meetingService
@@ -31,7 +37,7 @@ class ConnectionController {
     try {
       def uri = request.getHeader("x-original-uri")
       def sessionToken = ParamsUtil.getSessionToken(uri)
-      UserSession userSession = meetingService.getUserSessionWithAuthToken(sessionToken)
+      UserSession userSession = meetingService.getUserSessionWithSessionToken(sessionToken)
       Boolean allowRequestsWithoutSession = meetingService.getAllowRequestsWithoutSession(sessionToken)
       Boolean isSessionTokenInvalid = !session[sessionToken] && !allowRequestsWithoutSession
 
@@ -42,7 +48,7 @@ class ConnectionController {
         response.addHeader("User-Id", userSession.internalUserId)
         response.addHeader("Meeting-Id", userSession.meetingID)
         response.addHeader("Voice-Bridge", userSession.voicebridge )
-        response.addHeader("User-Name", userSession.fullname)
+        response.addHeader("User-Name", URLEncoder.encode(userSession.fullname, StandardCharsets.UTF_8.name()))
         response.setStatus(200)
         response.outputStream << 'authorized'
       } else {
@@ -54,11 +60,83 @@ class ConnectionController {
     }
   }
 
+  def checkGraphqlAuthorization = {
+    try {
+      String sessionToken = request.getHeader("x-session-token")
+
+      UserSession userSession = meetingService.getUserSessionWithSessionToken(sessionToken)
+      Boolean isSessionTokenValid = session[sessionToken] != null
+
+      response.addHeader("Cache-Control", "no-cache")
+
+      if (userSession != null && isSessionTokenValid) {
+        Meeting m = meetingService.getMeeting(userSession.meetingID)
+        User u
+        if(m) {
+          u = m.getUserById(userSession.internalUserId)
+        }
+
+        response.addHeader("Meeting-Id", userSession.meetingID)
+        response.setStatus(200)
+        withFormat {
+          json {
+            def builder = new JsonBuilder()
+            builder {
+              "response" "authorized"
+              "X-Currently-Online" m && u && !u.hasLeft() ? "true" : "false"
+              "X-Moderator" u && u.isModerator() ? "true" : "false"
+              "X-Presenter" u && u.isPresenter() ? "true" : "false"
+              "X-UserId" userSession.internalUserId
+              "X-MeetingId" userSession.meetingID
+            }
+            render(contentType: "application/json", text: builder.toPrettyString())
+          }
+        }
+      } else if(isSessionTokenValid) {
+        UserSessionBasicData removedUserSession = meetingService.getRemovedUserSessionWithSessionToken(sessionToken)
+        if(removedUserSession) {
+          response.addHeader("Meeting-Id", removedUserSession.meetingId)
+          response.setStatus(200)
+          withFormat {
+            json {
+              def builder = new JsonBuilder()
+              builder {
+                "response" "authorized"
+                "X-Currently-Online" "false"
+                "X-Moderator" removedUserSession.isModerator()  ? "true" : "false"
+                "X-Presenter" "false"
+                "X-UserId" removedUserSession.userId
+                "X-MeetingId" removedUserSession.meetingId
+              }
+              render(contentType: "application/json", text: builder.toPrettyString())
+            }
+          }
+        } else {
+          throw new Exception("Invalid User Session")
+        }
+      } else {
+        throw new Exception("Invalid sessionToken")
+      }
+    } catch (Exception e) {
+      log.debug("Error while authenticating graphql connection: " + e.getMessage())
+      response.setStatus(401)
+      withFormat {
+        json {
+          def builder = new JsonBuilder()
+          builder {
+            "response" "unauthorized"
+          }
+          render(contentType: "application/json", text: builder.toPrettyString())
+        }
+      }
+    }
+  }
+
   def legacyCheckAuthorization = {
     try {
       def uri = request.getHeader("x-original-uri")
       def sessionToken = ParamsUtil.getSessionToken(uri)
-      UserSession userSession = meetingService.getUserSessionWithAuthToken(sessionToken)
+      UserSession userSession = meetingService.getUserSessionWithSessionToken(sessionToken)
 
       response.addHeader("Cache-Control", "no-cache")
       response.contentType = 'plain/text'

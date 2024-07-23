@@ -7,7 +7,7 @@ import {
   colorGrayDark,
   colorSuccess,
   colorGrayLightest,
-  colorWhite,
+  colorOffWhite,
 } from '/imports/ui/stylesheets/styled-components/palette';
 import {
   borderSizeLarge,
@@ -18,40 +18,51 @@ import {
 } from '/imports/ui/stylesheets/styled-components/general';
 
 const DropdownButton = styled.button`
-  background-color: #FFF;
+  background-color: ${colorOffWhite};
   border: none;
-  border-radius: 7px;
-  color: ${colorGrayDark};
+  border-radius: 13px;
+  box-shadow: 0px 0px 2px rgba(0, 0, 0, 0.16),
+    0px 2px 3px rgba(0, 0, 0, 0.24),
+    0px 2px 6px rgba(0, 0, 0, 0.1);
+  color: #2d2d2d;
   cursor: pointer;
   padding: .3rem .5rem;
-  padding-bottom: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   tab-index: 0;
 
   &:hover {
-    background-color: #ececec;
+    background-color: ${colorGrayLightest};
   }
 `;
 
-const Right = styled.div`
+const Left = styled.div`
   cursor: pointer;
   position: absolute;
-  left: auto;
-  right: 0px;
+  left: 2px;
+  top: 2px;
   z-index: 999;
 
   > div {
-    background-color: ${colorWhite};
     width: 50px;
-    height: 41px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
   button {
-    margin-top: .45rem;
+    height: 100%;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
   [dir="rtl"] & {
-    right: auto;
-    left : ${borderSize};
+    right: 2px;
+    left: auto;
   }
 `;
 
@@ -135,7 +146,7 @@ const ButtonIcon = styled(Icon)`
 
 export default {
   DropdownButton,
-  Right,
+  Left,
   ToastText,
   StatusIcon,
   ToastIcon,

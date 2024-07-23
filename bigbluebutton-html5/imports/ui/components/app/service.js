@@ -1,34 +1,49 @@
-import Breakouts from '/imports/api/breakouts';
-import Meetings from '/imports/api/meetings';
-import Settings from '/imports/ui/services/settings';
-import Auth from '/imports/ui/services/auth/index';
-import deviceInfo from '/imports/utils/deviceInfo';
+import DarkReader from 'darkreader';
+import Styled from './styles';
+import logger from '/imports/startup/client/logger';
+import useMeeting from '../../core/hooks/useMeeting';
 
-const getFontSize = () => {
-  const applicationSettings = Settings.application;
-  return applicationSettings ? applicationSettings.fontSize : '16px';
-};
+export function useMeetingIsBreakout() {
+  const { data: meeting } = useMeeting((m) => ({
+    isBreakout: m.isBreakout,
+  }));
 
-const getBreakoutRooms = () => Breakouts.find().fetch();
-
-function meetingIsBreakout() {
-  const meeting = Meetings.findOne({ meetingId: Auth.meetingID },
-    { fields: { 'meetingProp.isBreakout': 1 } });
-  return (meeting && meeting.meetingProp.isBreakout);
+  return meeting && meeting.isBreakout;
 }
 
-const validIOSVersion = () => {
-  const { isIos, isIosVersionSupported } = deviceInfo;
-
-  if (isIos) {
-    return isIosVersionSupported();
+export const setDarkTheme = (value) => {
+  if (value && !DarkReader.isEnabled()) {
+    DarkReader.enable(
+      { brightness: 100, contrast: 90 },
+      {
+        invert: [Styled.DtfInvert],
+        ignoreInlineStyle: [Styled.DtfCss],
+        ignoreImageAnalysis: [Styled.DtfImages],
+      },
+    );
+    logger.info(
+      {
+        logCode: 'dark_mode',
+      },
+      'Dark mode is on.',
+    );
   }
-  return true;
+
+  if (!value && DarkReader.isEnabled()) {
+    DarkReader.disable();
+    logger.info(
+      {
+        logCode: 'dark_mode',
+      },
+      'Dark mode is off.',
+    );
+  }
 };
 
-export {
-  getFontSize,
-  meetingIsBreakout,
-  getBreakoutRooms,
-  validIOSVersion,
+export const isDarkThemeEnabled = () => DarkReader.isEnabled();
+
+export default {
+  setDarkTheme,
+  isDarkThemeEnabled,
+  useMeetingIsBreakout,
 };

@@ -1,22 +1,25 @@
 import React from 'react';
-import _ from 'lodash';
+import { throttle } from '/imports/utils/throttle';
 import { notify } from '/imports/ui/services/notification';
-import Settings from '/imports/ui/services/settings';
+import { getSettingsSingletonInstance } from '/imports/ui/services/settings';
 import Styled from './styles';
 
-const CDN = Meteor.settings.public.app.cdn;
-const BASENAME = Meteor.settings.public.app.basename;
-const HOST = CDN + BASENAME;
 const GUEST_WAITING_BELL_THROTTLE_TIME = 10000;
 
 function ringGuestWaitingBell() {
+  const Settings = getSettingsSingletonInstance();
+
   if (Settings.application.guestWaitingAudioAlerts) {
+    const CDN = window.meetingClientSettings.public.app.cdn;
+    const BASENAME = window.meetingClientSettings.public.app.basename;
+    const HOST = CDN + BASENAME;
+
     const audio = new Audio(`${HOST}/resources/sounds/doorbell.mp3`);
     audio.play();
   }
 }
 
-const ringGuestWaitingBellThrottled = _.throttle(
+const ringGuestWaitingBellThrottled = throttle(
   ringGuestWaitingBell,
   GUEST_WAITING_BELL_THROTTLE_TIME,
   { leading: true, trailing: false },
@@ -33,6 +36,8 @@ function messageElement(text, type) {
 }
 
 function alert(obj, intl) {
+  const Settings = getSettingsSingletonInstance();
+
   if (Settings.application.guestWaitingPushAlerts) {
     notify(
       messageElement(obj.messageValues[0], 'title'),

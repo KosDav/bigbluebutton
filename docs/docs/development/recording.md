@@ -15,9 +15,9 @@ This document assumes the reader understands the current [BigBlueButton architec
 
 BigBlueButton records all the events and media data generated during a BigBlueButton session for later playback.
 
-If you want to see the Record and Playback (RaP) feature in action, there is a [demo](https://demo.bigbluebutton.org/gl) where you can record a BigBlueButton session and play it back after it is listed under "Recorded Sessions" on the same page. This demo is also available on your server if you have [installed it](/administration/install#6.-install-api-demos). Processing and publishing the media for playback after the end of your session may take a few minutes.
+If you want to see the Record and Playback (RaP) feature in action, use Greenlight on the demo server and record a session [demo](https://demo.bigbluebutton.org/gl). You can then play it back after it is listed under "Recorded Sessions" on the same page. Processing and publishing the media for playback after the end of your session may take a few minutes.
 
-Like BigBlueButton sessions, the management of recordings should be handled by [third-party software](https://bigbluebutton.org/integrations/). Third-party software consumes the [BigBlueButton API](/development/api) to accomplish that. As a user, you may want to use third-party software which sets the right value to the parameter "record". As a developer, you may want to use a (not official) library that implements the API calls in your preferred language or implement it by yourself.
+Like BigBlueButton sessions, the management of recordings should be handled by [third-party software](https://bigbluebutton.org/schools/integrations/). Third-party software consumes the [BigBlueButton API](/development/api) to accomplish that. As a user, you may want to use third-party software which sets the right value to the parameter "record". As a developer, you may want to use a (not official) library that implements the API calls in your preferred language or implement it by yourself.
 
 From a technical point of view, in the BigBlueButton API, when you pass the parameter `record=true` with [create](/development/api#create), BigBlueButton will create a session that has recording enabled. In this case, it will add a new button to the toolbar at the top of the window with a circle icon which a moderator in the session can use to indicate sections of the meeting to be recorded.
 
@@ -27,7 +27,7 @@ After the session finishes, the BigBlueButton server will run an archive script 
 
 After the recording is archived, BigBlueButton will run one (or more) ingest and processing scripts, named workflows, that will _process_ and _publish_ the captured data into a format for _playback_.
 
-![Record and Playback - Overview](/img/diagrams/Record and Playback Service Diagram-RAP - Overview.png)
+![Record and Playback - Overview](/img/diagrams/record-and-playback-service-diagram-rap-overview.png)
 
 ## Record and Playback Phases
 
@@ -50,26 +50,26 @@ Whiteboard, cursor, chat and other events are stored on Redis. Webcam videos (.f
 
 The Archive phase involves placing the captured media and events into a **raw** directory. That directory contains ALL the necessary media and files to work with.
 
-![Record and Playback - Archive](/img/diagrams/Record and Playback Service Diagram-RAP - Archive.png)
+![Record and Playback - Archive](/img/diagrams/record-and-playback-service-diagram-rap-archive.png)
 
 ### Sanity
 
 The Sanity phase involves checking that all the archived files are _valid_ for processing. For example
 that media files have not zero length and events were archived.
 
-![Record and Playback - Sanity](/img/diagrams/Record and Playback Service Diagram-RAP - Sanity.png)
+![Record and Playback - Sanity](/img/diagrams/record-and-playback-service-diagram-rap-sanity.png)
 
 ### Process
 
 The Process phase involves processing the valid archived files of the recording according to the workflow (e.g., presentation). Usually, it involves parsing the archived events, converting media files to other formats or concatenating them, etc.
 
-![Record and Playback - Process](/img/diagrams/Record and Playback Service Diagram-RAP - Process.png)
+![Record and Playback - Process](/img/diagrams/record-and-playback-service-diagram-rap-process.png)
 
 ### Publish
 
 The Publish phase involves generating metadata and taking many or all the processed files and placing them in a directory exposed publicly for later playback.
 
-![Record and Playback - Publish](/img/diagrams/Record and Playback Service Diagram-RAP - Publish.png)
+![Record and Playback - Publish](/img/diagrams/record-and-playback-service-diagram-rap-publish.png)
 
 ### Post-Scripts
 
@@ -87,7 +87,15 @@ Some examples of things you might use the post-scripts to do:
 
 The Playback phase involves taking the published files (audio, webcam, deskshare, chat, events, notes, captions, polls, metadata) and playing them in the browser.
 
-Using the workflow **presentation**, playback is handled by HTML, CSS, and Javascript libraries; it is fully available in Mozilla Firefox and Google Chrome (also in Android devices). In other browsers like Opera or Safari the playback will work without all its functionality, e.g., thumbnails won't be shown. There is not a unique video file for playback, there is not an available button or link to download the recording. We have opened an [issue](https://github.com/bigbluebutton/bigbluebutton/issues/1969) for this enhancement.
+Using the workflow **presentation**, playback is handled by HTML, CSS, and Javascript libraries;
+it is fully available in Mozilla Firefox and Google Chrome (also on Android devices). In other
+browsers like Opera or Safari the playback will work without all its functionality, e.g.,
+thumbnails won't be shown.
+
+There is not a unique video file for playback in the **presentation** workflow.
+However, the **video** workflow can be used to generate that unique video file.
+This workflow is not enabled by default. [See section below](#deploying-other-formats) to
+learn how to enable it.
 
 ## Media storage
 
@@ -96,12 +104,10 @@ Some Record and Playback phases store the media they handle in different directo
 ### Captured files
 
 - AUDIO: `/var/freeswitch/meetings`
-- WEBCAM (Flash): `/usr/share/red5/webapps/video/streams`
-- WEBCAM (HTML5): `/var/kurento/recordings`
-- SCREEN SHARING (Flash): `/var/usr/share/red5/webapps/screenshare/streams`
-- SCREEN SHARING (HTML5): `/var/kurento/screenshare`
-- SLIDES: `/var/bigbluebutton`
-- NOTES: `http://localhost:9001/p` (port 9002 on BBB 2.5+)
+- WEBCAM: `/var/lib/bbb-webrtc-recorder/recordings/<meetingid>`
+- SCREEN SHARING: `/var/lib/bbb-webrtc-recorder/screenshare/<meetingid>`
+- SLIDES: `/var/bigbluebutton/<meetingid>`
+- NOTES: `http://localhost:9002/p`
 - EVENTS: `Redis`
 
 #### Archived files
@@ -209,7 +215,7 @@ $ bbb-record --list-workflows
 ## process:presentation
 ## publish:presentation
 #
-## Available processing scripts: 
+## Available processing scripts:
 #
 ## presentation
 ```
@@ -223,7 +229,7 @@ $ bbb-record --watch
 Lists your 10 latest recordings, refreshing the output every 2 seconds. As BigBlueButton processes a recording, you'll see progress updates from the background services.
 
 ```bash
-Every 2.0s: bbb-record --list-recent                                                                                                                                                                                                               
+Every 2.0s: bbb-record --list-recent
 Internal MeetingID                   Time   APVD APVDE RAS Slides Processed Published Ext. Meeting ID
 ------------------------------------------- ---- ----- --- ------ --------- --------- ---------------
 29173583...1508b2efd7-1647630316965  Mar 18  X    XX X XX      7  pres.     pres.     English 102
@@ -580,7 +586,7 @@ publish_dir: /home/ubuntu/temp/published/presentation
 ```
 
 Now we run the archive step. Go to `record-and-playback/core/scripts` and type
-   
+
 ```ruby
 ruby archive/archive.rb -m <meeting-id>
 ```
@@ -642,11 +648,44 @@ ruby publish/presentation.rb -m <meeting-id>-presentation
 
 Notice we appended "presentation" to the meetingId, this will tell the script to publish using the "presentation" format.
 
+### Running record-and-playback as a service
+
 You can deploy your changes by running `deploy.sh` and restarting the recording-related services:
 ```
 systemctl restart bbb-rap-starter
 systemctl restart bbb-rap-resque-worker
 ```
+
+#### Deploying other formats
+
+When running `deploy.sh`, it will only set the presentation workflow by default. However it is possible to add other formats too such as video, screenshare, etc. In order to do that, you just have to change `deploy_format "presentation"` in the `deploy.sh` script, adding whatever formats you want, so, in case of `video` and `screenshare`, it would be:
+
+```bash
+deploy_format "presentation video screenshare"
+```
+
+Another adaptation to deploy other formats is to follow the steps in [additional recording formats](/administration/customize#install-additional-recording-processing-formats) to enable these new workflows you just set. For example, in your `bigbluebutton.yml`, you may have:
+
+```yml
+steps:
+  archive: 'sanity'
+  sanity: 'captions'
+  captions:
+    - 'process:presentation'
+    - 'process:video'
+  'process:presentation': 'publish:presentation'
+  'process:video': 'publish:video'
+```
+
+At last, if it is the first time you set one other recording format, you may have to reload nginx in addition to the other commands mentioned previously in this section, like so:
+
+```
+systemctl restart bbb-rap-starter
+systemctl restart bbb-rap-resque-worker
+systemctl reload nginx
+```
+
+If you are not changing the nginx files for each format, it is not mandatory to reload nginx every time you run `deploy.sh`.
 
 ### Troubleshooting
 
@@ -775,6 +814,8 @@ Its error message describes the issue.
 
 ### How do I change the Start/Stop recording marks?
 
+Note: In BigBlueButton 2.6.9 we [made a change](https://github.com/bigbluebutton/bigbluebutton/pull/18044) which ensures that by default media files are not being saved to file unless the meeting is actively being recorded. If you are using BigBlueButton 2.6.9 or later, the instructions below will only work if you set `recordFullDurationMedia=true` in `/etc/bigbluebutton/bbb-web.properties`.
+
 In a scenario where a user forgot to press the Start/Stop recording button 30 minutes into a session, resulting in the playback missing that initial segment, its content can still be included by editing the intervals to be processed in the `events.xml` file.
 
 First, use `bbb-record --list` to find the internal `meetingId` for the recording. For example, to get the last three recordings, execute
@@ -870,7 +911,7 @@ The sections that follow cover the types of events you will encounter in `events
 | SharePresentationEvent     | - timestampUTC<br/>- presentationName<br/>- podId<br/>- share<br/>- date                                                                  |
 | GotoSlideEvent             | - timestampUTC<br/>- presentationName<br/>- podId<br/>- id<br/>- slide<br/>- date                                                         |
 | CreatePresentationPodEvent | - currentPresenter<br/>- timestampUTC<br/>- podID<br/>- date                                                                              |
-| SetPresentationDownloadable| - timestampUTC<br/>- presentationName<br/>- podId<br/>- date<br/>- downloadable                                                           |                                            
+| SetPresentationDownloadable| - timestampUTC<br/>- presentationName<br/>- podId<br/>- date<br/>- downloadable                                                           |
 | SetPresentarInPodEvent     | - timestampUTC<br/>- podId<br/> - date<br/>- nextPresenterId
 
 ### Whiteboard

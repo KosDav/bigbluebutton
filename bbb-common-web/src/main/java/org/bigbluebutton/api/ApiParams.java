@@ -33,10 +33,12 @@ public class ApiParams {
     public static final String FREE_JOIN = "freeJoin";
     public static final String FULL_NAME = "fullName";
     public static final String GUEST_POLICY = "guestPolicy";
+    public static final String ALLOW_PROMOTE_GUEST_TO_MODERATOR = "allowPromoteGuestToModerator";
     public static final String MEETING_LAYOUT = "meetingLayout";
     public static final String IS_BREAKOUT = "isBreakout";
     public static final String LOGO = "logo";
     public static final String LOGOUT_TIMER = "logoutTimer";
+    public static final String LOGIN_URL = "loginURL";
     public static final String LOGOUT_URL = "logoutURL";
     public static final String MAX_PARTICIPANTS = "maxParticipants";
     public static final String MEETING_ID = "meetingID";
@@ -67,10 +69,10 @@ public class ApiParams {
     public static final String MEETING_EXPIRE_IF_NO_USER_JOINED_IN_MINUTES = "meetingExpireIfNoUserJoinedInMinutes";
     public static final String MEETING_EXPIRE_WHEN_LAST_USER_LEFT_IN_MINUTES = "meetingExpireWhenLastUserLeftInMinutes";
     public static final String WELCOME = "welcome";
-    public static final String HTML5_INSTANCE_ID = "html5InstanceId";
     public static final String ROLE = "role";
     public static final String GROUPS = "groups";
     public static final String DISABLED_FEATURES = "disabledFeatures";
+    public static final String DISABLED_FEATURES_EXCLUDE = "disabledFeaturesExclude";
     public static final String NOTIFY_RECORDING_IS_ON = "notifyRecordingIsOn";
 
     public static final String PRESENTATION_UPLOAD_EXTERNAL_DESCRIPTION = "presentationUploadExternalDescription";
@@ -94,6 +96,7 @@ public class ApiParams {
     public static final String LOCK_SETTINGS_LOCK_ON_JOIN = "lockSettingsLockOnJoin";
     public static final String LOCK_SETTINGS_LOCK_ON_JOIN_CONFIGURABLE = "lockSettingsLockOnJoinConfigurable";
     public static final String LOCK_SETTINGS_HIDE_VIEWERS_CURSOR = "lockSettingsHideViewersCursor";
+    public static final String LOCK_SETTINGS_HIDE_VIEWERS_ANNOTATION = "lockSettingsHideViewersAnnotation";
 
     // New param passed on create call to callback when meeting ends.
     // This is a duplicate of the endCallbackUrl meta param as we want this
@@ -106,8 +109,10 @@ public class ApiParams {
     public static final String END_WHEN_NO_MODERATOR = "endWhenNoModerator";
     public static final String END_WHEN_NO_MODERATOR_DELAY_IN_MINUTES = "endWhenNoModeratorDelayInMinutes";
 
+    public static final String RECORD_FULL_DURATION_MEDIA = "recordFullDurationMedia";
+
     private ApiParams() {
-        throw new IllegalStateException("ApiParams is a utility class. Instanciation is forbidden.");
+        throw new IllegalStateException("ApiParams is a utility class. Instantiation is forbidden.");
     }
 
 }

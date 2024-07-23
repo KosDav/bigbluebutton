@@ -9,7 +9,6 @@ keywords:
 - firewall
 ---
 
-This document covers firewall configuration for BigBlueButton 2.2.
 
 You should configure your firewall before [Installing BigBlueButton](/administration/install); otherwise, you may get errors during the installation and will be unable to test BigBlueButton after the installation completes.
 
@@ -21,7 +20,7 @@ The easiest network configuration for installing BigBlueButton is on a server th
 
 ![Install](/img/11-install-net0.png)
 
-In this simple network configuration, BigBlueButton should work out-of-the-box after installation. This is because the packaging scripts automatically configure BigBlueButton using the first non-loopback IP address, whereas access to sensitive ports is blocked.  
+In this simple network configuration, BigBlueButton should work out-of-the-box after installation. This is because the packaging scripts automatically configure BigBlueButton using the first non-loopback IP address, whereas access to sensitive ports is blocked.
 A variation of this setup occurs when the server has multiple network interfaces, but the external IP is still the first network interface (such as `eth0`) picked up by the installation scripts.
 
 ![Install](/img/11-install-net1.png)
@@ -52,7 +51,7 @@ If you are using EC2, you should also assign your server an [Elastic IP address]
 
 ### Azure
 
-On Microsot Azure, when you create an instance you need to add the following inbound port rules to enable incomming connections on ports 80, 443, and UDP port range 16384-32768:
+On Microsot Azure, when you create an instance you need to add the following inbound port rules to enable incoming connections on ports 80, 443, and UDP port range 16384-32768:
 
 ![Azure Cloud ](/img/azure-firewall.png?raw=true 'Azure 80, 443, and UDP 16384-32768')
 
@@ -186,7 +185,7 @@ Keep in mind the following steps should already be done by bbb-install.
 To configure an appropriate external address in Kurento, you need to edit `/etc/kurento/modules/kurento/WebRtcEndpoint.conf.ini` and uncomment and assign values for `externalIPv4`. Here's the relevant section in the default configuration.
 
 ```ini
-## cat /etc/kurento/modules/kurento/WebRtcEndpoint.conf.ini
+# cat /etc/kurento/modules/kurento/WebRtcEndpoint.conf.ini
 [...]
 ;; External IPv4 and IPv6 addresses of the media server.
 ;;
@@ -220,7 +219,7 @@ externalIPv4=192.0.2.0
 
 ### Update FreeSWITCH
 
-Let's revist the typical setup for BigBlueButton behind a firewall (yours would have different IP address of course).
+Let's revisit the typical setup for BigBlueButton behind a firewall (yours would have different IP address of course).
 
 ![Install](/img/11-install-net2.png)
 
@@ -282,16 +281,16 @@ to
 
 so that FreeSWITCH announces the external IP address when a connection is established.
 
-Check `/etc/bigbluebutton/nginx/sip.nginx` to ensure its binding to the external IP address of the firewall [Configure FreeSWITCH for using SSL](/administration/install#configure-freeswitch-for-using-ssl).
+Check `/etc/bigbluebutton/nginx/sip.nginx` to ensure its binding to the external IP address of the firewall.
 
-Check that `enableListenOnly` is set to true in `/usr/share/meteor/bundle/programs/server/assets/app/config/settings.yml`, as in
+Check that `enableListenOnly` is set to true in `/etc/bigbluebutton/bbb-html5.yml`, as in
 
 ```bash
-$ grep enableListenOnly /usr/share/meteor/bundle/programs/server/assets/app/config/settings.yml
+$ grep enableListenOnly /etc/bigbluebutton/bbb-html5.yml
     enableListenOnly: true
 ```
 
-Next, edit `/usr/local/bigbluebutton/bbb-webrtc-sfu/config/default.yml` change the value to `ip` to match the external IP address of the server.
+Next, edit `/etc/bigbluebutton/bbb-webrtc-sfu/production.yml` change the value to `ip` to match the external IP address of the server.
 
 ```yaml
 freeswitch:
@@ -300,7 +299,8 @@ freeswitch:
   port: 5066
 ```
 
-If your runnig 2.2.29 or later, the value of `sip_ip` depends on whether you have `sipjsHackViaWs` set to true or false in `/usr/share/meteor/bundle/programs/server/assets/app/config/settings.yml` (see [Configure FreeSWITCH for using SSL](/administration/install#configure-freeswitch-for-using-ssl)).
+If your running 2.2.29 or later, the value of `sip_ip` depends on whether you have `sipjsHackViaWs`
+set to true or false in `/etc/bigbluebutton/bbb-html5.yml`.
 
 You also need to [setup Kurento to use a STUN server](#extra-steps-when-server-is-behind-nat).
 
@@ -310,11 +310,12 @@ After making the above changes, restart BigBlueButton.
 $ bbb-conf --restart
 ```
 
-To test, launch FireFox and try connecting to your BigBlueButton server and join the audio. If you see the words '[ WebRTC Audio ]' in the lower right-hand corner, it worked.
+To test, launch FireFox and try connecting to your BigBlueButton server and join the audio.
+If you see the words '[ WebRTC Audio ]' in the lower right-hand corner, it worked.
 
 If it didn't work, there are two likely error messages when you try to connect with audio.
 
-Detected the following WebRTC issue: Error 1002: Could not make a WebSocket connection. Do you want to try Flash instead?
+Detected the following WebRTC issue: Error 1002: Could not make a WebSocket connection.
 
 | ErrorDetected the following WebRTC issue    | Probable Cause |
 | ------------------------------------------- | -------------- |
@@ -399,7 +400,7 @@ If you don't see this, follow the steps below on your BigBlueButton server to se
 
 ![Install](/img/11-install-net3.png)
 
-In this diagram, we've setup a dummy NIC for 203.0.113.1, which will allow FreeSWITCH to connect back to itself. This way, when FreeSWICH receives an internal connection from other parts of BigBlueButton, it will think that it's on the external interface. This will cause it to use the correct IP address on the response.
+In this diagram, we've setup a dummy NIC for 203.0.113.1, which will allow FreeSWITCH to connect back to itself. This way, when FreeSWITCH receives an internal connection from other parts of BigBlueButton, it will think that it's on the external interface. This will cause it to use the correct IP address on the response.
 
 To setup a dummy NIC, on your BigBlueButton enter the following command and substitute `EXTERNAL_IP_ADDRESS` with the external IP address of your firewall.
 
@@ -434,7 +435,7 @@ At this point, restart your BigBlueButton server with `bbb-conf --restart`, then
 Finally, to ensure this dummy NIC to be automatically created on restart, edit `/etc/network/interfaces` and add the following
 
 ```
-## The loopback network interface
+# The loopback network interface
 auto lo
 iface lo inet loopback
         post-up ip addr add EXTERNAL_IP_ADDRESS/32 dev lo

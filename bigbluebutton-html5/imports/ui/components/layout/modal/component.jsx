@@ -1,34 +1,29 @@
 import React, { useState } from 'react';
 import PropTypes from 'prop-types';
 import { defineMessages, injectIntl } from 'react-intl';
-import { LAYOUT_TYPE } from '/imports/ui/components/layout/enums';
-import { withModalMounter } from '/imports/ui/components/common/modal/service';
+import { LAYOUT_TYPE, CAMERADOCK_POSITION, HIDDEN_LAYOUTS } from '/imports/ui/components/layout/enums';
 import SettingsService from '/imports/ui/components/settings/service';
-import getFromUserSettings from '/imports/ui/services/users-settings';
 import deviceInfo from '/imports/utils/deviceInfo';
-import Toggle from '/imports/ui/components/common/switch/component';
 import Button from '/imports/ui/components/common/button/component';
 import Styled from './styles';
 
-const LayoutModalComponent = (props) => {
-  const {
-    intl,
-    closeModal,
-    isPresenter,
-    showToggleLabel,
-    application,
-    updateSettings,
-  } = props;
-
+const LayoutModalComponent = ({
+  intl,
+  setIsOpen,
+  isModerator = false,
+  isPresenter,
+  application,
+  updateSettings,
+  onRequestClose,
+  isOpen,
+  setLocalSettings,
+}) => {
   const [selectedLayout, setSelectedLayout] = useState(application.selectedLayout);
-  // eslint-disable-next-line react/prop-types
-  const [isKeepPushingLayout, setIsKeepPushingLayout] = useState(application.pushLayout);
+  const [updateAllUsed, setUpdateAllUsed] = useState(false);
 
-  const BASE_NAME = Meteor.settings.public.app.basename;
-  const CUSTOM_STYLE_URL = Boolean(Meteor.settings.public.app.customStyleUrl);
-  const customStyleUrl = Boolean(getFromUserSettings('bbb_custom_style_url', CUSTOM_STYLE_URL));
+  const BASE_NAME = window.meetingClientSettings.public.app.cdn + window.meetingClientSettings.public.app.basename;
 
-  const LAYOUTS_PATH = `${BASE_NAME}/resources/images/layouts/${customStyleUrl ? 'customStyle/' : ''}`;
+  const LAYOUTS_PATH = `${BASE_NAME}/resources/images/layouts/`;
   const isKeepPushingLayoutEnabled = SettingsService.isKeepPushingLayoutEnabled();
 
   const intlMessages = defineMessages({
@@ -36,25 +31,29 @@ const LayoutModalComponent = (props) => {
       id: 'app.layout.modal.title',
       description: 'Modal title',
     },
-    confirm: {
-      id: 'app.layout.modal.confirm',
+    update: {
+      id: 'app.layout.modal.update',
       description: 'Modal confirm button',
     },
-    cancel: {
-      id: 'app.layout.modal.cancel',
-      description: 'Modal cancel button',
+    updateAll: {
+      id: 'app.layout.modal.updateAll',
+      description: 'Modal updateAll button',
     },
     layoutLabel: {
       id: 'app.layout.modal.layoutLabel',
       description: 'Layout label',
     },
+    layoutToastLabelAuto: {
+      id: 'app.layout.modal.layoutToastLabelAuto',
+      description: 'Layout toast label',
+    },
+    layoutToastLabelAutoOff: {
+      id: 'app.layout.modal.layoutToastLabelAutoOff',
+      description: 'Layout toast label',
+    },
     layoutToastLabel: {
       id: 'app.layout.modal.layoutToastLabel',
       description: 'Layout toast label',
-    },
-    keepPushingLayoutLabel: {
-      id: 'app.layout.modal.keepPushingLayoutLabel',
-      description: 'Keep push layout Label',
     },
     customLayout: {
       id: 'app.layout.style.custom',
@@ -86,40 +85,37 @@ const LayoutModalComponent = (props) => {
     setSelectedLayout(e);
   };
 
-  const handleKeepPushingLayout = () => {
-    setIsKeepPushingLayout((newValue) => !newValue);
-  };
-
-  const handleCloseModal = () => {
+  const handleUpdateLayout = (updateAll) => {
     const obj = {
       application:
-      { ...application, selectedLayout, pushLayout: isKeepPushingLayout },
+        { ...application, selectedLayout, pushLayout: updateAll },
     };
-
-    updateSettings(obj, intl.formatMessage(intlMessages.layoutToastLabel));
-    closeModal();
+    if ((isModerator || isPresenter) && updateAll) {
+      updateSettings(obj, intlMessages.layoutToastLabelAuto);
+      setUpdateAllUsed(true);
+    } else if ((isModerator || isPresenter) && !updateAll && !updateAllUsed) {
+      updateSettings(obj, intlMessages.layoutToastLabelAutoOff);
+      setUpdateAllUsed(false);
+    } else {
+      updateSettings(obj, intlMessages.layoutToastLabel);
+    }
+    updateSettings(obj, intlMessages.layoutToastLabel, setLocalSettings);
+    setIsOpen(false);
   };
 
   const renderPushLayoutsOptions = () => {
-    if (!isPresenter) {
+    if (!isModerator && !isPresenter) {
       return null;
     }
 
     if (isKeepPushingLayoutEnabled) {
       return (
-        <Styled.PushContainer>
-          <Styled.LabelPushLayout>
-            {intl.formatMessage(intlMessages.keepPushingLayoutLabel)}
-          </Styled.LabelPushLayout>
-          <Toggle
-            id="TogglePush"
-            icons={false}
-            defaultChecked={isKeepPushingLayout}
-            onChange={handleKeepPushingLayout}
-            ariaLabel="push"
-            showToggleLabel={showToggleLabel}
-          />
-        </Styled.PushContainer>
+        <Styled.BottomButton
+          label={intl.formatMessage(intlMessages.updateAll)}
+          onClick={() => handleUpdateLayout(true)}
+          color="secondary"
+          data-test="updateEveryoneLayoutBtn"
+        />
       );
     }
     return null;
@@ -128,9 +124,9 @@ const LayoutModalComponent = (props) => {
   const renderLayoutButtons = () => (
     <Styled.ButtonsContainer>
       {Object.values(LAYOUT_TYPE)
+        .filter((layout) => !HIDDEN_LAYOUTS.includes(layout))
         .map((layout) => (
           <Styled.ButtonLayoutContainer key={layout}>
-            <Styled.LabelLayoutNames aria-hidden>{intl.formatMessage(intlMessages[`${layout}Layout`])}</Styled.LabelLayoutNames>
             <Styled.LayoutBtn
               label=""
               customIcon={(
@@ -138,11 +134,18 @@ const LayoutModalComponent = (props) => {
                   src={`${LAYOUTS_PATH}${layout}.svg`}
                   alt={`${layout} ${intl.formatMessage(intlMessages.layoutSingular)}`}
                 />
-                )}
-              onClick={() => handleSwitchLayout(layout)}
+              )}
+              onClick={() => {
+                handleSwitchLayout(layout);
+                if (layout === LAYOUT_TYPE.CUSTOM_LAYOUT && application.selectedLayout !== layout) {
+                  document.getElementById('layout')?.setAttribute('data-cam-position', CAMERADOCK_POSITION.CONTENT_TOP);
+                }
+              }}
               active={(layout === selectedLayout).toString()}
               aria-describedby="layout-btn-desc"
+              data-test={`${layout}Layout`}
             />
+            <Styled.LabelLayoutNames aria-hidden>{intl.formatMessage(intlMessages[`${layout}Layout`])}</Styled.LabelLayoutNames>
           </Styled.ButtonLayoutContainer>
         ))}
     </Styled.ButtonsContainer>
@@ -155,25 +158,25 @@ const LayoutModalComponent = (props) => {
       shouldCloseOnOverlayClick
       isPhone={deviceInfo.isPhone}
       data-test="layoutChangeModal"
-      onRequestClose={closeModal}
+      onRequestClose={() => setIsOpen(false)}
       title={intl.formatMessage(intlMessages.title)}
+      {...{
+        isOpen,
+        onRequestClose,
+      }}
     >
       <Styled.Content>
         <Styled.BodyContainer>
           {renderLayoutButtons()}
-          {renderPushLayoutsOptions()}
         </Styled.BodyContainer>
       </Styled.Content>
       <Styled.ButtonBottomContainer>
-        <Styled.BottomButton
-          label={intl.formatMessage(intlMessages.cancel)}
-          onClick={closeModal}
-          color="secondary"
-        />
+        {renderPushLayoutsOptions()}
         <Button
           color="primary"
-          label={intl.formatMessage(intlMessages.confirm)}
-          onClick={handleCloseModal}
+          label={intl.formatMessage(intlMessages.update)}
+          onClick={() => handleUpdateLayout(false)}
+          data-test="updateLayoutBtn"
         />
       </Styled.ButtonBottomContainer>
       <div style={{ display: 'none' }} id="layout-btn-desc">{intl.formatMessage(intlMessages.layoutBtnDesc)}</div>
@@ -185,15 +188,15 @@ const propTypes = {
   intl: PropTypes.shape({
     formatMessage: PropTypes.func.isRequired,
   }).isRequired,
-  closeModal: PropTypes.func.isRequired,
+  isModerator: PropTypes.bool,
   isPresenter: PropTypes.bool.isRequired,
-  showToggleLabel: PropTypes.bool.isRequired,
   application: PropTypes.shape({
     selectedLayout: PropTypes.string.isRequired,
   }).isRequired,
   updateSettings: PropTypes.func.isRequired,
+  setLocalSettings: PropTypes.func.isRequired,
 };
 
 LayoutModalComponent.propTypes = propTypes;
 
-export default injectIntl(withModalMounter(LayoutModalComponent));
+export default injectIntl(LayoutModalComponent);

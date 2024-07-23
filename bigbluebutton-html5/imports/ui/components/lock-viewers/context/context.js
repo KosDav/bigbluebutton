@@ -12,6 +12,7 @@ export function LockStruct() {
       lockOnJoin: true,
       lockOnJoinConfigurable: false,
       hideViewersCursor: false,
+      hideViewersAnnotation: false,
     },
     userLocks: {
       userWebcam: false,
@@ -19,6 +20,8 @@ export function LockStruct() {
       userNotes: false,
       userPrivateChat: false,
       userPublicChat: false,
+      hideViewersCursor: false,
+      hideViewersAnnotation: false,
     },
   });
 }

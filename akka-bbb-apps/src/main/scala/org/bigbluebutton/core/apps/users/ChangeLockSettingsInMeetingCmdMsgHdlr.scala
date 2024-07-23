@@ -3,12 +3,13 @@ package org.bigbluebutton.core.apps.users
 import org.bigbluebutton.LockSettingsUtil
 import org.bigbluebutton.common2.msgs._
 import org.bigbluebutton.core.apps.{ PermissionCheck, RightsManagementTrait }
+import org.bigbluebutton.core.db.{ MeetingLockSettingsDAO, NotificationDAO }
 import org.bigbluebutton.core.models._
 import org.bigbluebutton.core.running.OutMsgRouter
 import org.bigbluebutton.core.running.MeetingActor
 import org.bigbluebutton.core2.MeetingStatus2x
 import org.bigbluebutton.core2.Permissions
-import org.bigbluebutton.core2.message.senders.{ MsgBuilder }
+import org.bigbluebutton.core2.message.senders.{ MsgBuilder, Sender }
 
 trait ChangeLockSettingsInMeetingCmdMsgHdlr extends RightsManagementTrait {
   this: MeetingActor =>
@@ -31,7 +32,8 @@ trait ChangeLockSettingsInMeetingCmdMsgHdlr extends RightsManagementTrait {
         hideUserList = msg.body.hideUserList,
         lockOnJoin = msg.body.lockOnJoin,
         lockOnJoinConfigurable = msg.body.lockOnJoinConfigurable,
-        hideViewersCursor = msg.body.hideViewersCursor
+        hideViewersCursor = msg.body.hideViewersCursor,
+        hideViewersAnnotation = msg.body.hideViewersAnnotation
       )
 
       if (!MeetingStatus2x.permissionsEqual(liveMeeting.status, settings) || !MeetingStatus2x.permisionsInitialized(liveMeeting.status)) {
@@ -40,6 +42,7 @@ trait ChangeLockSettingsInMeetingCmdMsgHdlr extends RightsManagementTrait {
         val oldPermissions = MeetingStatus2x.getPermissions(liveMeeting.status)
 
         MeetingStatus2x.setPermissions(liveMeeting.status, settings)
+        MeetingLockSettingsDAO.update(liveMeeting.props.meetingProp.intId, settings)
 
         // Dial-in
         def buildLockMessage(meetingId: String, userId: String, lockedBy: String, locked: Boolean): BbbCommonEnvCoreMsg = {
@@ -63,6 +66,7 @@ trait ChangeLockSettingsInMeetingCmdMsgHdlr extends RightsManagementTrait {
               Vector()
             )
             outGW.send(notifyEvent)
+            NotificationDAO.insert(notifyEvent)
 
             LockSettingsUtil.enforceCamLockSettingsForAllUsers(liveMeeting, outGW)
           } else {
@@ -75,6 +79,7 @@ trait ChangeLockSettingsInMeetingCmdMsgHdlr extends RightsManagementTrait {
               Vector()
             )
             outGW.send(notifyEvent)
+            NotificationDAO.insert(notifyEvent)
           }
         }
 
@@ -89,6 +94,7 @@ trait ChangeLockSettingsInMeetingCmdMsgHdlr extends RightsManagementTrait {
               Vector()
             )
             outGW.send(notifyEvent)
+            NotificationDAO.insert(notifyEvent)
             VoiceUsers.findAll(liveMeeting.voiceUsers) foreach { vu =>
               if (vu.intId.startsWith(IntIdPrefixType.DIAL_IN)) { // only Dial-in users need this
                 val eventExplicitLock = buildLockMessage(liveMeeting.props.meetingProp.intId, vu.intId, msg.body.setBy, settings.disableMic)
@@ -106,6 +112,7 @@ trait ChangeLockSettingsInMeetingCmdMsgHdlr extends RightsManagementTrait {
               Vector()
             )
             outGW.send(notifyEvent)
+            NotificationDAO.insert(notifyEvent)
           }
         }
 
@@ -120,6 +127,7 @@ trait ChangeLockSettingsInMeetingCmdMsgHdlr extends RightsManagementTrait {
               Vector()
             )
             outGW.send(notifyEvent)
+            NotificationDAO.insert(notifyEvent)
           } else {
             val notifyEvent = MsgBuilder.buildNotifyAllInMeetingEvtMsg(
               liveMeeting.props.meetingProp.intId,
@@ -130,6 +138,7 @@ trait ChangeLockSettingsInMeetingCmdMsgHdlr extends RightsManagementTrait {
               Vector()
             )
             outGW.send(notifyEvent)
+            NotificationDAO.insert(notifyEvent)
           }
         }
 
@@ -144,6 +153,7 @@ trait ChangeLockSettingsInMeetingCmdMsgHdlr extends RightsManagementTrait {
               Vector()
             )
             outGW.send(notifyEvent)
+            NotificationDAO.insert(notifyEvent)
           } else {
             val notifyEvent = MsgBuilder.buildNotifyAllInMeetingEvtMsg(
               liveMeeting.props.meetingProp.intId,
@@ -154,6 +164,7 @@ trait ChangeLockSettingsInMeetingCmdMsgHdlr extends RightsManagementTrait {
               Vector()
             )
             outGW.send(notifyEvent)
+            NotificationDAO.insert(notifyEvent)
           }
         }
 
@@ -168,6 +179,7 @@ trait ChangeLockSettingsInMeetingCmdMsgHdlr extends RightsManagementTrait {
               Vector()
             )
             outGW.send(notifyEvent)
+            NotificationDAO.insert(notifyEvent)
           } else {
             val notifyEvent = MsgBuilder.buildNotifyAllInMeetingEvtMsg(
               liveMeeting.props.meetingProp.intId,
@@ -178,6 +190,7 @@ trait ChangeLockSettingsInMeetingCmdMsgHdlr extends RightsManagementTrait {
               Vector()
             )
             outGW.send(notifyEvent)
+            NotificationDAO.insert(notifyEvent)
           }
         }
 
@@ -192,6 +205,7 @@ trait ChangeLockSettingsInMeetingCmdMsgHdlr extends RightsManagementTrait {
               Vector()
             )
             outGW.send(notifyEvent)
+            NotificationDAO.insert(notifyEvent)
           } else {
             val notifyEvent = MsgBuilder.buildNotifyAllInMeetingEvtMsg(
               liveMeeting.props.meetingProp.intId,
@@ -202,6 +216,7 @@ trait ChangeLockSettingsInMeetingCmdMsgHdlr extends RightsManagementTrait {
               Vector()
             )
             outGW.send(notifyEvent)
+            NotificationDAO.insert(notifyEvent)
           }
         }
 
@@ -224,6 +239,7 @@ trait ChangeLockSettingsInMeetingCmdMsgHdlr extends RightsManagementTrait {
           lockOnJoin = settings.lockOnJoin,
           lockOnJoinConfigurable = settings.lockOnJoinConfigurable,
           hideViewersCursor = settings.hideViewersCursor,
+          hideViewersAnnotation = settings.hideViewersAnnotation,
           msg.body.setBy
         )
         val header = BbbClientMsgHeader(
@@ -233,6 +249,16 @@ trait ChangeLockSettingsInMeetingCmdMsgHdlr extends RightsManagementTrait {
         )
 
         outGW.send(BbbCommonEnvCoreMsg(envelope, LockSettingsInMeetingChangedEvtMsg(header, body)))
+
+        //Refresh graphql session for all locked viewers
+        for {
+          user <- Users2x.findAll(liveMeeting.users2x)
+          if user.locked
+          if user.role == Roles.VIEWER_ROLE
+          regUser <- RegisteredUsers.findWithUserId(user.intId, liveMeeting.registeredUsers)
+        } yield {
+          Sender.sendForceUserGraphqlReconnectionSysMsg(liveMeeting.props.meetingProp.intId, regUser.id, regUser.sessionToken, "lockSettings_changed", outGW)
+        }
       }
     }
   }

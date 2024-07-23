@@ -8,10 +8,16 @@ keywords:
 - coturn
 - turn server
 ---
+# BBB 2.6 now includes coturn for TURN server
+Starting with BigBlueButton version 2.6, the default installation process includes coturn, a TURN server that allows users behind restrictive firewalls to connect. You don't need any additional configuration changes unless you want to override the default configuration.
 
-This document covers how to set up a TURN server for BigBlueButton to allow users behind restrictive firewalls to connect.
+This document covers how to set up a TURN server for previous versions of BigBlueButton.
 
-You can also use [bbb-install.sh](https://github.com/bigbluebutton/bbb-install#install-a-turn-server) to automate the steps in this document.
+# BBB 2.6 now includes coturn for TURN server
+
+Starting with BigBlueButton version 2.6, the default installation process includes coturn, a TURN server that allows users behind restrictive firewalls to connect. You don't need any additional configuration changes unless you want to override the default configuration.
+
+This document covers how to set up a TURN server for previous versions of BigBlueButton.
 
 ## Setup a TURN server
 
@@ -120,12 +126,12 @@ tls-listening-port=443
 listening-ip=<IP>
 relay-ip=<IP>
 
-## If the server is behind NAT, you need to specify the external IP address.
-## If there is only one external address, specify it like this:
+# If the server is behind NAT, you need to specify the external IP address.
+# If there is only one external address, specify it like this:
 #external-ip=172.17.19.120
-## If you have multiple external addresses, you have to specify which
-## internal address each corresponds to, like this. The first address is the
-## external ip, and the second address is the corresponding internal IP.
+# If you have multiple external addresses, you have to specify which
+# internal address each corresponds to, like this. The first address is the
+# external ip, and the second address is the corresponding internal IP.
 #external-ip=172.17.19.131/10.0.0.11
 #external-ip=172.17.18.132/10.0.0.12
 
@@ -141,7 +147,7 @@ realm=<example.com>
 
 cert=/etc/turnserver/fullchain.pem
 pkey=/etc/turnserver/privkey.pem
-## From https://ssl-config.mozilla.org/ Intermediate, openssl 1.1.0g, 2020-01
+# From https://ssl-config.mozilla.org/ Intermediate, openssl 1.1.0g, 2020-01
 cipher-list="ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384"
 dh-file=/etc/turnserver/dhp.pem
 
@@ -150,22 +156,22 @@ no-cli
 no-tlsv1
 no-tlsv1_1
 
-## Block connections to IP ranges which shouldn't be reachable
+# Block connections to IP ranges which shouldn't be reachable
 no-loopback-peers
 no-multicast-peers
-## CVE-2020-26262
-## If running coturn version older than 4.5.2, uncomment these rules and ensure
-## that you have listening-ip set to ipv4 addresses only.
+# CVE-2020-26262
+# If running coturn version older than 4.5.2, uncomment these rules and ensure
+# that you have listening-ip set to ipv4 addresses only.
 #denied-peer-ip=0.0.0.0-0.255.255.255
 #denied-peer-ip=127.0.0.0-127.255.255.255
 #denied-peer-ip=::1
-## Private (LAN) addresses
-## If you are running BigBlueButton within a LAN, you might need to add an "allow" rule for your address range.
-## IPv4 Private-Use
+# Private (LAN) addresses
+# If you are running BigBlueButton within a LAN, you might need to add an "allow" rule for your address range.
+# IPv4 Private-Use
 denied-peer-ip=10.0.0.0-10.255.255.255
 denied-peer-ip=172.16.0.0-172.31.255.255
 denied-peer-ip=192.168.0.0-192.168.255.255
-## Other IPv4 Special-Purpose addresses
+# Other IPv4 Special-Purpose addresses
 denied-peer-ip=100.64.0.0-100.127.255.255
 denied-peer-ip=169.254.0.0-169.254.255.255
 denied-peer-ip=192.0.0.0-192.0.0.255
@@ -173,11 +179,11 @@ denied-peer-ip=192.0.2.0-192.0.2.255
 denied-peer-ip=198.18.0.0-198.19.255.255
 denied-peer-ip=198.51.100.0-198.51.100.255
 denied-peer-ip=203.0.113.0-203.0.113.255
-## IPv6 Unique-Local
+# IPv6 Unique-Local
 denied-peer-ip=fc00::-fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff
-## IPv6 Link-Local Unicast
+# IPv6 Link-Local Unicast
 denied-peer-ip=fe80::-febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff
-## Other IPv6 Special-Purpose assignments
+# Other IPv6 Special-Purpose assignments
 denied-peer-ip=::ffff:0:0-::ffff:ffff:ffff
 denied-peer-ip=64:ff9b::-64:ff9b::ffff:ffff
 denied-peer-ip=64:ff9b:1::-64:ff9b:1:ffff:ffff:ffff:ffff:ffff
@@ -249,7 +255,7 @@ Ensure that the `coturn` has binded to port 443 with `netstat -antp | grep 443`.
 
 ## Configure BigBlueButton to use your TURN server
 
-You must configure bbb-web so that it will provide the list of turn servers to the web browser. Edit the file `/usr/share/bbb-web/WEB-INF/classes/spring/turn-stun-servers.xml` using the contents below and make edits:
+You must configure bbb-web so that it will provide the list of turn servers to the web browser. Edit the file `/etc/bigbluebutton/turn-stun-servers.xml` using the contents below and make edits:
 
 - replace both instances of `<turn.example.com>` with the hostname of the TURN server, and
 - replace `<secret_value>` with the secret you configured in `turnserver.conf`.
@@ -339,13 +345,13 @@ Nat filtering: Endpoint Independent Filtering
 
 If you get an error, check that `coturn` is running on the TURN server using `systemctl status coturn.service`. Check the logs by doing `tail -f /var/log/turnserver/coturn.log`. You can get verbose logs by adding `verbose` to `/etc/turnserver.conf` and restarting the TURN server `systemctl restart coturn.service`
 
-You can test your TURN server using the [trickle ICE](https://webrtc.github.io/samples/src/content/peerconnection/trickle-ice/) page. This gives you a log of the relay candidates as they are returned from ICE gathering. To test using this page, you need to generate some test credentials. Run the following BASH script and substitute `<turn.example.com>` with the hostname of your TURN server and `<secret_value>` with the password for your TURN server.
+You can test your TURN server using the [trickle ICE](https://webrtc.github.io/samples/src/content/peerconnection/trickle-ice/) page. This gives you a log of the relay candidates as they are returned from ICE gathering. To test using this page, you need to generate some test credentials. The following BASH script generates them by reading your `/etc/turnserver.conf`. Alternatively, set `HOST=<HOSTNAME>` and `SECRET=<SECRET>` to your TURN servers credentials.
 
 ```bash
 #!/bin/bash
 
-HOST=<turn.example.com>
-SECRET=<secret_value>
+HOST=$(cat /etc/turnserver.conf | grep realm | sed 's/realm=//')
+SECRET=$(cat /etc/turnserver.conf | grep static-auth-secret | sed 's/static-auth-secret=//')
 
 time=$(date +%s)
 expiry=8400

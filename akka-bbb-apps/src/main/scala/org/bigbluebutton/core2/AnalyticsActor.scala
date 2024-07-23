@@ -1,6 +1,6 @@
 package org.bigbluebutton.core2
 
-import akka.actor.{ Actor, ActorLogging, Props }
+import org.apache.pekko.actor.{ Actor, ActorLogging, Props }
 import org.bigbluebutton.common2.msgs._
 import org.bigbluebutton.common2.util.JsonUtil
 object AnalyticsActor {
@@ -56,6 +56,7 @@ class AnalyticsActor(val includeChat: Boolean) extends Actor with ActorLogging {
       case m: EjectUserFromVoiceConfSysMsg                   => logMessage(msg)
       case m: CreateBreakoutRoomSysCmdMsg                    => logMessage(msg)
       case m: RequestBreakoutJoinURLReqMsg                   => logMessage(msg)
+      case m: SetBreakoutRoomInviteDismissedReqMsg           => logMessage(msg)
       case m: EndAllBreakoutRoomsMsg                         => logMessage(msg)
       case m: TransferUserToMeetingRequestMsg                => logMessage(msg)
       case m: UpdateBreakoutRoomsTimeReqMsg                  => logMessage(msg)
@@ -77,6 +78,7 @@ class AnalyticsActor(val includeChat: Boolean) extends Actor with ActorLogging {
       case m: UserDisconnectedFromGlobalAudioMsg             => logMessage(msg)
       case m: AssignPresenterReqMsg                          => logMessage(msg)
       case m: ChangeUserPinStateReqMsg                       => logMessage(msg)
+      case m: UserConnectionAliveReqMsg                      => logMessage(msg)
       case m: ScreenshareRtmpBroadcastStartedVoiceConfEvtMsg => logMessage(msg)
       case m: ScreenshareRtmpBroadcastStoppedVoiceConfEvtMsg => logMessage(msg)
       case m: ScreenshareRtmpBroadcastStartedEvtMsg          => logMessage(msg)
@@ -101,6 +103,10 @@ class AnalyticsActor(val includeChat: Boolean) extends Actor with ActorLogging {
         logMessage(msg)
       case m: VoiceConfCallStateEvtMsg => logMessage(msg)
       case m: VoiceCallStateEvtMsg => logMessage(msg)
+      case m: HoldChannelInVoiceConfSysMsg => logMessage(msg)
+      case m: ChannelHoldChangedVoiceConfEvtMsg => logMessage(msg)
+      case m: ToggleListenOnlyModeSysMsg => logMessage(msg)
+      case m: ListenOnlyModeToggledInSfuEvtMsg => logMessage(msg)
 
       // Breakout
       case m: BreakoutRoomEndedEvtMsg => logMessage(msg)
@@ -116,8 +122,8 @@ class AnalyticsActor(val includeChat: Boolean) extends Actor with ActorLogging {
       //case m: PresentationPageConvertedEventMsg => logMessage(msg)
       // case m: StoreAnnotationsInRedisSysMsg => logMessage(msg)
       // case m: StoreExportJobInRedisSysMsg => logMessage(msg)
-      case m: MakePresentationWithAnnotationDownloadReqMsg => logMessage(msg)
-      case m: NewPresAnnFileAvailableMsg => logMessage(msg)
+      case m: MakePresentationDownloadReqMsg => logMessage(msg)
+      case m: NewPresFileAvailableMsg => logMessage(msg)
       case m: PresentationPageConversionStartedSysMsg => logMessage(msg)
       case m: PresentationConversionEndedSysMsg => logMessage(msg)
       case m: PresentationConversionRequestReceivedSysMsg => logMessage(msg)
@@ -139,6 +145,8 @@ class AnalyticsActor(val includeChat: Boolean) extends Actor with ActorLogging {
       case m: GetGroupChatMsgsReqMsg => logChatMessage(msg)
       case m: GetGroupChatMsgsRespMsg => logChatMessage(msg)
       case m: CreateGroupChatReqMsg => logChatMessage(msg)
+      case m: SetGroupChatLastSeenReqMsg => logChatMessage(msg)
+      case m: SetGroupChatVisibleReqMsg => logChatMessage(msg)
       case m: GroupChatCreatedEvtMsg => logChatMessage(msg)
       case m: GetGroupChatsReqMsg => logChatMessage(msg)
       case m: GetGroupChatsRespMsg => logChatMessage(msg)
@@ -146,7 +154,6 @@ class AnalyticsActor(val includeChat: Boolean) extends Actor with ActorLogging {
       // Guest Management
       case m: GuestsWaitingApprovedMsg => logMessage(msg)
       case m: GuestsWaitingApprovedEvtMsg => logMessage(msg)
-      case m: GuestWaitingLeftMsg => logMessage(msg)
       case m: GuestWaitingLeftEvtMsg => logMessage(msg)
       case m: GuestsWaitingForApprovalEvtMsg => logMessage(msg)
       case m: UpdatePositionInWaitingQueueReqMsg => logMessage(msg)
@@ -182,7 +189,6 @@ class AnalyticsActor(val includeChat: Boolean) extends Actor with ActorLogging {
       case m: BroadcastLayoutEvtMsg => logMessage(msg)
 
       // Pads
-      case m: PadCreateGroupReqMsg => logMessage(msg)
       case m: PadCreateGroupCmdMsg => logMessage(msg)
       case m: PadGroupCreatedEvtMsg => logMessage(msg)
       case m: PadGroupCreatedRespMsg => logMessage(msg)
@@ -200,7 +206,6 @@ class AnalyticsActor(val includeChat: Boolean) extends Actor with ActorLogging {
       case m: PadUpdatedEvtMsg => logMessage(msg)
       case m: PadUpdatePubMsg => logMessage(msg)
       case m: PadUpdateCmdMsg => logMessage(msg)
-      case m: PadCapturePubMsg => logMessage(msg)
 
       case _ => // ignore message
     }

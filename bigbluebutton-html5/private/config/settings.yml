@@ -12,6 +12,7 @@ public:
     forceListenOnly: false
     # Skips the echo test when connecting with microphone.
     skipCheck: false
+    instanceId: ''
     # Skips the echo test when connecting with microphone right after user
     # joins the room the first time. Subsequent joins to microphone won't
     # have echo test skipped, for example if user leaves and joins the mic
@@ -24,18 +25,19 @@ public:
     # audio. Default value is true
     # Firefox users: if no output devices is shown, you may set the flag
     # "media.setsinkid.enabled" to make it work properly
-    # enableDynamicAudioDeviceSelection: true
+    enableDynamicAudioDeviceSelection: true
     #
+    skipEchoTestIfPreviousDevice: false
     clientTitle: BigBlueButton
     appName: BigBlueButton HTML5 Client
     bbbServerVersion: HTML5_FULL_BBB_VERSION
     displayBbbServerVersion: true
-    copyright: '©2023 BigBlueButton Inc.'
+    copyright: '©2024 BigBlueButton Inc.'
     html5ClientBuild: HTML5_CLIENT_VERSION
     helpLink: https://bigbluebutton.org/html5/
     delayForUnmountOfSharedNote: 120000
     bbbTabletApp:
-      enabled: false
+      enabled: true
       iosAppStoreUrl: 'https://apps.apple.com/us/app/bigbluebutton-tablet/id1641156756'
       iosAppUrlScheme: 'bigbluebutton-tablet'
     lockOnJoin: true
@@ -51,7 +53,7 @@ public:
     # If you run a cluster setup with a load balancer which hides the individual
     # nodes, then this should be set to https://bbb-host/learning-analytics-dashboard
     learningDashboardBase: '/learning-analytics-dashboard'
-    # Use https URL of CSS file. Example: https://docs.bigbluebutton.org/admin/customize.html#examples
+    # Use https URL of CSS file. Example: https://docs.bigbluebutton.org/administration/customize
     customStyleUrl: null
     darkTheme:
       enabled: true
@@ -59,13 +61,16 @@ public:
     # the default logoutUrl matches window.location.origin i.e. bigbluebutton.org for demo.bigbluebutton.org
     # in some cases we want only custom logoutUrl to be used when provided on meeting create. Default value: true
     askForConfirmationOnLeave: true
+    wakeLock: 
+      enabled: true
     allowDefaultLogoutUrl: true
-    allowUserLookup: false
     dynamicGuestPolicy: true
     enableGuestLobbyMessage: true
+    guestPolicyExtraAllowOptions: false
     alwaysShowWaitingRoomUI: true
     enableLimitOfViewersInWebcam: false
     enableMultipleCameras: true
+    enableCameraAsContent: true
     # Allow users to open webcam video modal/preview when video is already
     # active. This also allows to change virtual backgrounds without
     # restarting webcam.
@@ -85,14 +90,17 @@ public:
     # https://developer.mozilla.org/en-US/docs/Web/API/Web_Speech_API/Using_the_Web_Speech_API#speech_recognition
     audioCaptions:
       enabled: false
+      alwaysVisible: false
       # mobile: <Boolean> - controls speech transcription availability on mobile
       mobile: false
+      # provider: [webspeech, vosk, gladia]
+      provider: webspeech
       language:
         available:
         # - de-DE
           - en-US
           - es-ES
-        # - fr-FR
+          - fr-FR
         # - hi-ID
         # - it-IT
         # - ja-JP
@@ -125,10 +133,11 @@ public:
       allowUserChooseRoomByDefault: false
       captureWhiteboardByDefault: false
       captureSharedNotesByDefault: false
+      sendInvitationToAssignedModeratorsByDefault: false
       breakoutRoomLimit: 16
-      sendInvitationToIncludedModerators: false
     # https://github.com/bigbluebutton/bigbluebutton/pull/10826
     customHeartbeat: false
+    customHeartbeatUseDataFrames: true
     showAllAvailableLocales: true
     # Show "Audio Filters for Microphone" option in settings menu.
     # When set to true, users are able to enable/disable microphone constraints,
@@ -137,14 +146,22 @@ public:
     # For more info, see 'microphoneConstraints' option in this config.
     # If not set, default value is true.
     showAudioFilters: true
-    raiseHandActionButton:
+    reactionsButton:
       enabled: true
+    emojiRain:
+      # If true, new reactions will be activated
+      enabled: false
+      # Can set the throttle, the number of emojis that will be displayed and their size
+      intervalEmojis: 2000
+      numberOfEmojis: 5
+      # emojiSize: size of the emoji in 'em' units
+      emojiSize: 2
     # If enabled, before joining microphone the client will perform a trickle
-    # ICE against Kurento and use the information about successfull
+    # ICE against Kurento and use the information about successful
     # candidate-pairs to filter out local candidates in SIP.js's SDP.
     # Try enabling this setting in scenarios where the listenonly mode works,
     # but microphone doesn't (for example, when using VPN).
-    # For compatibility check "Browser compatbility" section in:
+    # For compatibility check "Browser compatibility" section in:
     # https://developer.mozilla.org/en-US/docs/Web/API/RTCDtlsTransport/iceTransport
     # This is an EXPERIMENTAL setting and the default value is false
     # experimentalUseKmsTrickleIceForMicrophone: false
@@ -156,13 +173,14 @@ public:
     enableCopyNetworkStatsButton: true
     # where should client settings be stored? if you run a single BBB server or
     # a cluster with a reverse proxy in front of it, you may set this to 'local'
-    # See https://docs.bigbluebutton.org/admin/clusterproxy.html
+    # See See https://docs.bigbluebutton.org/administration/cluster-proxy
     # allowed values:
     # 'session' -> settings are stored in browser sessionStorage
     # 'local' -> settings are stored in browser localStorage
     userSettingsStorage: session
     defaultSettings:
       application:
+        selectedLayout: 'custom'
         animations: true
         chatAudioAlerts: false
         chatPushAlerts: false
@@ -174,8 +192,14 @@ public:
         raiseHandPushAlerts: true
         guestWaitingAudioAlerts: true
         guestWaitingPushAlerts: true
+        wakeLock: true
         paginationEnabled: true
+        whiteboardToolbarAutoHide: false
+        autoCloseReactionsBar: true
+        directLeaveButton: true
         darkTheme: false
+        # set a custom color for talking highlight in webcam
+        webcamBorderHighlightColor: []
         # fallbackLocale: if the locale the client is loaded in does not have a
         # translation a string, it will use the translation from the locale
         # specified in fallbackLocale. Note that fallbackLocale should be a
@@ -189,7 +213,7 @@ public:
         overrideLocale: null
         #Audio constraints for microphone. Use this to control browser's
         #filters, such as AGC (Auto Gain Control) , Echo Cancellation,
-        #Noise Supression, etc.
+        #Noise Suppression, etc.
         #For more deails, see:
         # https://developer.mozilla.org/en-US/docs/Web/API/MediaTrackConstraints
         #Currently, google chrome sets {ideal: true} for autoGainControl,
@@ -212,6 +236,12 @@ public:
       dataSaving:
         viewParticipantsWebcams: true
         viewScreenshare: true
+      # Options that are sent to the transcription backed (only Gladia is supported for now)
+      transcription:
+        # Indicates if the transcription backend should include partial results
+        partialUtterances: true
+        # The minumum length (in seconds) an utterance has to have for we to use it
+        minUtteranceLength: 1
     shortcuts:
       openOptions:
         accesskey: O
@@ -259,13 +289,28 @@ public:
     # string will be returned.
     fallbackOnEmptyLocaleString: true
     disableWebsocketFallback: true
+    # Maximum number of bytes allowed in each mutation message payload.
+    # Defaults to 10485760 (10MB)
+    maxMutationPayloadSize: 10485760
+  # plugins:
+  #   - name: SamplePresentationToolbarPlugin
+  #     url: https://<your-Host>/plugins/SamplePresentationToolbarPlugin.js
   externalVideoPlayer:
     enabled: true
   kurento:
     wsUrl: HOST
-    # Valid for video-provider. Time (ms) before its WS connection times out
-    # and tries to reconnect.
-    wsConnectionTimeout: 4000
+    cameraWsOptions:
+      # Valid for video-provider. Time (ms) before its WS connection times out
+      # and tries to reconnect.
+      wsConnectionTimeout: 4000
+      # maxRetries: max reconnection retries
+      maxRetries: 7
+      # debug: console trace logging for video-provider's ws
+      debug: false
+      heartbeat:
+        interval: 15000
+        delay: 3000
+        reconnectOnFailure: true
     # Time in milis to wait for the browser to return a gUM call (used in video-preview)
     gUMTimeout: 20000
     # Controls whether ICE candidates should be signaled to bbb-webrtc-sfu.
@@ -294,11 +339,13 @@ public:
       bitrate: 1500
       mediaTimeouts:
         maxConnectionAttempts: 2
-        # Base screen media timeout (send|recv)
-        baseTimeout: 30000
-        # Max timeout: used as the max camera subscribe reconnection timeout. Each
+        # Base screen media timeout (send|recv) - first connections
+        baseTimeout: 20000
+        # Base screen media timeout (send|recv) - re-connections
+        baseReconnectionTimeout: 8000
+        # Max timeout: used as the max camera subscribe connection timeout. Each
         # subscribe reattempt increases the reconnection timer up to this
-        maxTimeout: 60000
+        maxTimeout: 25000
         timeoutIncreaseFactor: 1.5
       constraints:
         video:
@@ -376,6 +423,14 @@ public:
           width: 1280
           height: 720
           frameRate: 30
+      - id: fhd
+        name: Camera as content
+        hidden: true
+        default: false
+        bitrate: 1500
+        constraints:
+          width: 1920
+          height: 1080
     enableScreensharing: true
     enableVideo: true
     enableVideoMenu: true
@@ -393,6 +448,7 @@ public:
     autoShareWebcam: false
     skipVideoPreview: false
     skipVideoPreviewOnFirstJoin: false
+    skipVideoPreviewIfPreviousDevice: false
     # cameraSortingModes.paginationSorting: sorting mode to be applied when pagination is active
     # cameraSortingModes.defaultSorting: sorting mode when pagination is not active (full mesh)
     # Current implemented modes are:
@@ -433,7 +489,7 @@ public:
       # user to enable/disable it
       paginationToggleEnabled: true
       # how long (in ms) the negotiation will be debounced after a page change.
-      pageChangeDebounceTime: 2500
+      pageChangeDebounceTime: 1000
       # video page sizes for DESKTOP endpoints. It stands for the number of SUBSCRIBER streams.
       # PUBLISHERS aren't accounted for .
       # A page size of 0 (zero) means that the page size is unlimited (disabled).
@@ -444,6 +500,14 @@ public:
       mobilePageSizes:
         moderator: 2
         viewer: 2
+      # grid size for DESKTOP endpoints
+      desktopGridSizes:
+        moderator: 48
+        viewer: 48
+      # grid size for MOBILE endpoints
+      mobileGridSizes:
+        moderator: 14
+        viewer: 14
     paginationThresholds:
       enabled: false
       thresholds:
@@ -497,8 +561,154 @@ public:
       color: '#ffffff'
       family: Calibri
       size: 24px
+    # maximum number of simultaneous captions on screen
+    captionLimit: 3
+    # maximum size of a caption line in characters
+    lineLimit: 60
+    # maximum number of lines a caption can have on screen
     lines: 2
+    # time the captions will hang on screen after last updated
     time: 5000
+    # Default pad which will store automatically generated captions
+    defaultPad: en
+    showButton: false
+    locales:
+      - locale: "af"
+        name: "Afrikaans"
+      - locale: "ar"
+        name: "العربية"
+      - locale: "az"
+        name: "Azərbaycan dili"
+      - locale: "bg-BG"
+        name: "Български"
+      - locale: "bn"
+        name: "বাংলা"
+      - locale: "ca"
+        name: "Català"
+      - locale: "cs-CZ"
+        name: "Čeština"
+      - locale: "da"
+        name: "Dansk"
+      - locale: "de"
+        name: "Deutsch"
+      - locale: "dv"
+        name: "ދިވެހި"
+      - locale: "el-GR"
+        name: "Ελληνικά"
+      - locale: "en"
+        name: "English"
+      - locale: "en-US"
+        name: "English"
+      - locale: "eo"
+        name: "Esperanto"
+      - locale: "es"
+        name: "Español"
+      - locale: "es-419"
+        name: "Español (Latinoamérica)"
+      - locale: "es-ES"
+        name: "Español (España)"
+      - locale: "es-MX"
+        name: "Español (México)"
+      - locale: "et"
+        name: "eesti keel"
+      - locale: "eu"
+        name: "Euskara"
+      - locale: "fa-IR"
+        name: "فارسی"
+      - locale: "fi"
+        name: "Suomi"
+      - locale: "fr"
+        name: "Français"
+      - locale: "gl"
+        name: "Galego"
+      - locale: "he"
+        name: "עברית‏"
+      - locale: "hi-IN"
+        name: "हिन्दी"
+      - locale: "hr"
+        name: "Hrvatski"
+      - locale: "hu-HU"
+        name: "Magyar"
+      - locale: "hy"
+        name: "Հայերեն"
+      - locale: "id"
+        name: "Bahasa Indonesia"
+      - locale: "it-IT"
+        name: "Italiano"
+      - locale: "ja"
+        name: "日本語"
+      - locale: "ka"
+        name: "ქართული"
+      - locale: "km"
+        name: "ភាសាខ្មែរ"
+      - locale: "kn"
+        name: "ಕನ್ನಡ"
+      - locale: "ko-KR"
+        name: "한국어 (韩国)"
+      - locale: "lo-LA"
+        name: "ລາວ"
+      - locale: "lt-LT"
+        name: "Lietuvių"
+      - locale: "lv"
+        name: "Latviešu"
+      - locale: "ml"
+        name: "മലയാളം"
+      - locale: "mn-MN"
+        name: "Монгол"
+      - locale: "nb-NO"
+        name: "Norsk (bokmål)"
+      - locale: "nl"
+        name: "Nederlands"
+      - locale: "oc"
+        name: "Occitan"
+      - locale: "pl-PL"
+        name: "Polski"
+      - locale: "pt"
+        name: "Português"
+      - locale: "pt-BR"
+        name: "Português (Brasil)"
+      - locale: "ro-RO"
+        name: "Română"
+      - locale: "ru"
+        name: "Русский"
+      - locale: "sk-SK"
+        name: "Slovenčina (Slovakia)"
+      - locale: "sl"
+        name: "Slovenščina"
+      - locale: "sr"
+        name: "Српски"
+      - locale: "sv-SE"
+        name: "Svenska"
+      - locale: "ta"
+        name: "தமிழ்"
+      - locale: "te"
+        name: "తెలుగు"
+      - locale: "th"
+        name: "ภาษาไทย"
+      - locale: "tr-TR"
+        name: "Türkçe"
+      - locale: "uk-UA"
+        name: "Українська"
+      - locale: "vi-VN"
+        name: "Tiếng Việt"
+      - locale: "zh-CN"
+        name: "中文（中国"
+      - locale: "zh-TW"
+        name: "中文（台灣"
+  timer:
+    enabled: true
+    alarm: true
+    music:
+      enabled: false
+      volume: 0.4
+      track1: "RelaxingMusic"
+      track2: "CalmMusic"
+      track3: "aristocratDrums"
+    interval:
+      clock: 100
+      offset: 60000
+    time: 5
+    tabIndicator: false
   chat:
     enabled: true
     itemsPerPage: 100
@@ -523,21 +733,41 @@ public:
       chat_clear: PUBLIC_CHAT_CLEAR
       chat_poll_result: PUBLIC_CHAT_POLL_RESULT
       chat_exported_presentation: PUBLIC_CHAT_EXPORTED_PRESENTATION
+      chat_status_message: PUBLIC_CHAT_STATUS
     typingIndicator:
       enabled: true
+      showNames: true
     moderatorChatEmphasized: true
+    privateMessageReadFeedback:
+      enabled: false
     autoConvertEmoji: true
     emojiPicker:
       enable: false
-      frequentEmojiSortOnClick: false
-    # e.g.: disableEmojis: ['1F595','1F922']
+    # e.g.: disableEmojis: ['grin','laughing']
     disableEmojis: []
+    allowedElements: ['a', 'code', 'em', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'ol', 'ul', 'p', 'strong']
+  userReaction:
+    enabled: true
+    expire: 30
+    reactions:
+      - id: 'smiley'
+        native: '😃'
+      - id: 'neutral_face'
+        native: '😐'
+      - id: 'slightly_frowning_face'
+        native: '🙁'
+      - id: '+1'
+        native: '👍'
+      - id: '-1'
+        native: '👎'
+      - id: 'clap'
+        native: '👏'
   notes:
     enabled: true
     id: notes
     pinnable: true
   layout:
-    hidePresentation: false
+    hidePresentationOnJoin: false
     showParticipantsOnLogin: true
     showPushLayoutButton: true
     showPushLayoutToggle: true
@@ -553,7 +783,7 @@ public:
       #
       # Default bridge to be used by full audio mechanism.
       # This is the bridge's name as contained in 'bridges' array
-      defaultFullAudioBridge: sipjs
+      defaultFullAudioBridge: fullaudio
       #
       #
       # Server wide configuration to choose which bbb-webrtc-sfu
@@ -583,6 +813,9 @@ public:
           path: 'bridge/sip'
         - name: fullaudio
           path: 'bridge/sfu-audio-bridge'
+      # Forces a retry with iceTransportPolicy = 'relay' if the first attempt
+      # fails with a few selected errors codes (eg 1007, 1010)
+      retryThroughRelay: false
     stunTurnServersFetchAddress: '/bigbluebutton/api/stuns'
     cacheStunTurnServers: true
     fallbackStunServer: ''
@@ -597,9 +830,14 @@ public:
     callHangupTimeout: 2000
     callHangupMaximumRetries: 10
     echoTestNumber: 'echo'
-    listenOnlyCallTimeout: 25000
-    # Experimental. True is the canonical behavior. Flip to false to reverse
-    # the negotiation flow for LO subscribers.
+    listenOnlyCallTimeout: 15000
+    # Experimental: enables a new audio mechanism that has a server-side,
+    # transparent listen only mode. See issue #14021.
+    # bbb_userdata-transparent-listen-only supersedes this setting
+    transparentListenOnly: false
+    # Dev flag. Controls the WebRTC SDP negotiation role for SFU full audio.
+    fullAudioOffering: true
+    # Dev flag. Controls the WebRTC negotiation role for listen only.
     listenOnlyOffering: false
     #Timeout (ms) for gathering ICE candidates. When this timeout expires
     #the SDP is sent to the server with the candidates the browser gathered
@@ -660,6 +898,15 @@ public:
     #  audio: high
     #  webcam: medium
     #  screenshare: medium
+    #
+    # audioTroubleshootingLinks: links to help users troubleshoot audio issues
+    # If no link is provided, the audio troubleshooting button will not be shown.
+    # Index is the error code:
+    #   - 7: permission denied error code
+    #   - 0: unknown error
+    #audioTroubleshootingLinks:
+    #  7: 'https://link.bigbluebutton.org/perm'
+    #  0: 'https://link.bigbluebutton.org/unk'
   stats:
     enabled: true
     interval: 10000
@@ -669,33 +916,33 @@ public:
       warning: false
       error: true
     jitter:
-      - 10
-      - 20
-      - 30
+      warning: 10
+      danger: 20
+      critical: 30
     loss:
-      - 0.05
-      - 0.1
-      - 0.2
+      warning: 0.05
+      danger: 0.1
+      critical: 0.2
     rtt:
-      - 500
-      - 1000
-      - 2000
-    level:
-      - warning
-      - danger
-      - critical
+      warning: 500
+      danger: 1000
+      critical: 2000
     help: STATS_HELP_URL
   presentation:
-    allowDownloadable: true
+    allowDownloadOriginal: true
+    allowDownloadWithAnnotations: true
+    allowSnapshotOfCurrentSlide: true
     panZoomThrottle: 32
-    restoreOnUpdate: false
-    oldMinimizeButton: false
+    restoreOnUpdate: true
     uploadEndpoint: '/bigbluebutton/presentation/upload'
     fileUploadConstraintsHint: false
     # mirroredFromBBBCore are values controlled in bbb-web properties file. We include a copy here for notification purposes
     mirroredFromBBBCore:
       uploadSizeMax: 30000000
       uploadPagesMax: 200
+    # If the following mime-types list is changed, please, make sure to also change:
+    # bbb-common-web/src/main/java/org/bigbluebutton/presentation/MimeTypeUtils.java: L34 (and related files.)
+    # docs/docs/development/api.md: L1222
     uploadValidMimeTypes:
       - extension: .pdf
         mime: application/pdf
@@ -723,19 +970,16 @@ public:
         mime: application/vnd.oasis.opendocument.presentation
       - extension: .odg
         mime: application/vnd.oasis.opendocument.graphics
-      - extension: .odc
-        mime: application/vnd.oasis.opendocument.chart
-      - extension: .odi
-        mime: application/vnd.oasis.opendocument.image
       - extension: .jpg
         mime: image/jpeg
       - extension: .jpeg
         mime: image/jpeg
       - extension: .png
         mime: image/png
-  selectRandomUser:
-    enabled: true
-    countdown: false
+      - extension: .webp
+        mime: image/webp
+      - extension: .svg
+        mime: image/svg+xml
   user:
     role_moderator: MODERATOR
     role_viewer: VIEWER
@@ -747,6 +991,9 @@ public:
   whiteboard:
     annotationsQueueProcessInterval: 60
     cursorInterval: 150
+    allowInfiniteWhiteboard: false
+    allowInfiniteWhiteboardInBreakouts: false
+    pointerDiameter: 5
     maxStickyNoteLength: 1000
     # limit number of annotations per slide
     maxNumberOfAnnotations: 300
@@ -756,6 +1003,18 @@ public:
         update: DRAW_UPDATE
         end: DRAW_END
     styles:
+      # color is one of 'black', 'blue', 'green', 'grey', 'light-blue', 'light-green', 'light-red', 'light-violet', 'orange', 'red', 'violet', 'yellow'
+      colorStyle: 'black'
+      # dash is one of 'dashed', 'dotted', 'draw', 'solid'
+      dashStyle: 'draw'
+      # fill is one of 'none', 'pattern', 'semi', 'solid'
+      fillStyle: 'none'
+      # font is one of 'draw','mono','sans', 'serif'
+      fontStyle: 'draw'
+      # size is one of 'l', 'm', 's', 'xl'
+      sizeStyle: 'm'
+
+      # this one is obsoleted now
       text:
         # Initial font family.
         # family: mono|sans|script|serif
@@ -804,35 +1063,44 @@ public:
         - value: 20
         - value: 16
       tools:
+        - icon: select_tool
+          value: select
+        - icon: hand_tool
+          value: hand
+        - icon: draw_tool
+          value: draw
+        - icon: eraser_tool
+          value: eraser
+        - icon: arrow_tool
+          value: arrow
         - icon: text_tool
           value: text
-        - icon: line_tool
-          value: line
-        - icon: circle_tool
-          value: ellipse
-        - icon: triangle_tool
-          value: triangle
+        - icon: note_tool
+          value: note
         - icon: rectangle_tool
           value: rectangle
-        - icon: pen_tool
-          value: pencil
-        - icon: hand
-          value: hand
+        - icon: more_tool
+          value: more
       presenterTools:
-        - text
-        - line
-        - ellipse
-        - triangle
-        - rectangle
-        - pencil
+        - select
         - hand
-      multiUserTools:
+        - draw
+        - eraser
+        - arrow
         - text
-        - line
-        - ellipse
-        - triangle
+        - note
         - rectangle
-        - pencil
+        - more
+      multiUserTools:
+        - select
+        - hand
+        - draw
+        - eraser
+        - arrow
+        - text
+        - note
+        - rectangle
+        - more
   clientLog:
     server:
       enabled: false
@@ -867,29 +1135,6 @@ private:
     localesUrl: /locale-list
     pencilChunkLength: 100
     loadSlidesFromHttpAlways: false
-  redis:
-    host: 127.0.0.1
-    port: '6379'
-    timeout: 5000
-    password: null
-    debug: false
-    metrics:
-      queueMetrics: false
-      metricsDumpIntervalMs: 60000
-      metricsFolderPath: METRICS_FOLDER
-      removeMeetingOnEnd: true
-    channels:
-      toAkkaApps: to-akka-apps-redis-channel
-      toThirdParty: to-third-party-redis-channel
-    subscribeTo:
-      - to-html5-redis-channel
-      - from-akka-apps-[^f]*
-      - from-third-party-redis-channel
-    async:
-      - from-akka-apps-wb-redis-channel
-    ignored:
-      - CheckAlivePongSysMsg
-      - DoLatencyTracerMsg
   serverLog:
     level: info
     streamerLog: false
@@ -930,5 +1175,3 @@ private:
     path: '/metrics'
     # Whether default metrics for Node.js processes should be exported
     collectDefaultMetrics: false
-    # Whether redis metrics should be exported
-    collectRedisMetrics: false

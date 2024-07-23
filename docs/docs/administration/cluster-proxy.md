@@ -1,7 +1,7 @@
 ---
 id: cluster-proxy
 slug: /administration/cluster-proxy
-title: Cluster Proxy  Configuration
+title: Cluster Proxy Configuration
 sidebar_position: 8
 description: BigBlueButton Cluster Proxy Configuration
 keywords:
@@ -77,6 +77,12 @@ location /bbb-01/html5client/ {
   proxy_set_header Upgrade $http_upgrade;
   proxy_set_header Connection "Upgrade";
 }
+location /bbb-01/bigbluebutton/api {
+  proxy_pass https://bbb-01.example.com/bigbluebutton/api;
+  proxy_http_version 1.1;
+  proxy_set_header Upgrade $http_upgrade;
+  proxy_set_header Connection "Upgrade";
+}
 ```
 
 Repeat this `location` directive for every BigBlueButton server.
@@ -97,7 +103,7 @@ Add these options to `/etc/bigbluebutton/bbb-web.properties`:
 defaultHTML5ClientUrl=https://bbb-proxy.example.com/bbb-01/html5client/join
 presentationBaseURL=https://bbb-01.example.com/bigbluebutton/presentation
 accessControlAllowOrigin=https://bbb-proxy.example.com
-defaultGuestWaitURL=https://bbb-01.example.com/bbb-01/html5client/guestWait
+graphqlWebsocketUrl=wss://bbb-01.example.com/v1/graphql
 ```
 
 Add the following options to `/etc/bigbluebutton/bbb-html5.yml`:
@@ -111,16 +117,23 @@ public:
   media:
     stunTurnServersFetchAddress: 'https://bbb-01.example.com/bigbluebutton/api/stuns'
     sip_ws_host: 'bbb-01.example.com'
+  kurento:
+    wsUrl: wss://bbb-01.example.com/bbb-webrtc-sfu
   presentation:
     uploadEndpoint: 'https://bbb-01.example.com/bigbluebutton/presentation/upload'
+  # for BBB 2.4:
+  note:
+    url: 'https://bbb-01.example.com/pad'
+  # for BBB 2.5 or later
+  pads:
+    url: 'https://bbb-01.example.com/pad'
 ```
 
-Create the these unit file overrides:
+Create (or edit if it already exists) this unit override file:
 
-* `/etc/systemd/system/bbb-html5-frontend@.service.d/cluster.conf`
-* `/etc/systemd/system/bbb-html5-backend@.service.d/cluster.conf`
+* `/etc/systemd/system/bbb-html5.service.d/cluster.conf`
 
-Each should have the following content:
+It should have the following content:
 
 ```
 [Service]
@@ -128,16 +141,8 @@ Environment=ROOT_URL=https://127.0.0.1/bbb-01/html5client
 Environment=DDP_DEFAULT_CONNECTION_URL=https://bbb-01.example.com/bbb-01/html5client
 ```
 
-Change the nginx `$bbb_loadbalancer_node` variable to the name of the load
-balancer node in `/etc/bigbluebutton/nginx/loadbalancer.nginx` to allow CORS
-requests:
-
-```
-set $bbb_loadbalancer_node https://bbb-proxy.example.com
-```
-
-Prepend the mount point of bbb-html5 in all location sections except from the
-`location @html5client` section in `/etc/bigbluebutton/nginx/bbb-html5.nginx`:
+Prepend the mount point of bbb-html5 in all location sections except for the
+`location @html5client` section in `/usr/share/bigbluebutton/nginx/bbb-html5.nginx`:
 
 ```
 location @html5client {
@@ -155,17 +160,52 @@ BigBlueButton server and the proxy.
 Add a route for the locales handler for the guest lobby. The guest lobby is served directly from the BBB node.
 
 ```
-## /etc/bigbluebutton/nginx/bbb-html5.nginx
+# /usr/share/bigbluebutton/nginx/bbb-html5.nginx
 location =/html5client/locale {
   return 301 /bbb-01$request_uri;
 }
 ```
 
+Create the file `/etc/bigbluebutton/etherpad.json` with the following content:
 
-Restart BigBlueButton:
+```json
+{
+	"cluster_proxies": [
+		"https://bbb-proxy.example.com"
+	]
+}
+```
+
+Adjust the CORS settings in `/etc/default/bbb-web`:
 
 ```shell
-$ bbb-conf --restart
+JDK_JAVA_OPTIONS="-Dgrails.cors.enabled=true -Dgrails.cors.allowCredentials=true -Dgrails.cors.allowedOrigins=https://bbb-proxy.example.com,https://https://bbb-01.example.com"
+```
+
+Adjust the CORS setting in `/etc/default/bbb-graphql-middleware`:
+
+```shell
+BBB_GRAPHQL_MIDDLEWARE_LISTEN_PORT=8378
+# If you are running a cluster proxy setup, you need to configure the Origin of
+# the frontend. See https://docs.bigbluebutton.org/administration/cluster-proxy
+BBB_GRAPHQL_MIDDLEWARE_ORIGIN=bbb-proxy.example.com
+```
+
+Pay attention that this one is without protocol, just the hostname.
+
+Adjust the CORS setting in `/etc/default/bbb-graphql-server`:
+
+```shell
+HASURA_GRAPHQL_CORS_DOMAIN="https://bbb-proxy.example.com"
+```
+
+This one includes the protocol.
+
+Reload systemd and restart BigBlueButton:
+
+```shell
+# systemctl daemon-reload
+# bbb-conf --restart
 ```
 
 Now, opening a new session should show

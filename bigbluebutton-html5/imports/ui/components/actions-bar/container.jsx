@@ -1,72 +1,122 @@
 import React, { useContext } from 'react';
-import { Meteor } from 'meteor/meteor';
-import { withTracker } from 'meteor/react-meteor-data';
-import { injectIntl } from 'react-intl';
+import { useIntl } from 'react-intl';
+import { useMutation, useReactiveVar } from '@apollo/client';
 import getFromUserSettings from '/imports/ui/services/users-settings';
 import Auth from '/imports/ui/services/auth';
-import PresentationService from '/imports/ui/components/presentation/service';
-import Presentations from '/imports/api/presentations';
-import { UsersContext } from '../components-data/users-context/context';
 import ActionsBar from './component';
-import Service from './service';
-import UserListService from '/imports/ui/components/user-list/service';
-import ExternalVideoService from '/imports/ui/components/external-video-player/service';
-import CaptionsService from '/imports/ui/components/captions/service';
 import { layoutSelectOutput, layoutDispatch } from '../layout/context';
-import { isVideoBroadcasting } from '/imports/ui/components/screenshare/service';
-import { isExternalVideoEnabled, isPollingEnabled } from '/imports/ui/services/features';
+import {
+  useIsExternalVideoEnabled,
+  useIsPollingEnabled,
+  useIsPresentationEnabled,
+  useIsTimerFeatureEnabled,
+} from '/imports/ui/services/features';
 
+import { PluginsContext } from '/imports/ui/components/components-data/plugin-context/context';
+import {
+  CURRENT_PRESENTATION_PAGE_SUBSCRIPTION,
+} from '/imports/ui/components/whiteboard/queries';
 import MediaService from '../media/service';
+import useMeeting from '/imports/ui/core/hooks/useMeeting';
+import useCurrentUser from '/imports/ui/core/hooks/useCurrentUser';
+import { EXTERNAL_VIDEO_STOP } from '../external-video-player/mutations';
+import { PINNED_PAD_SUBSCRIPTION } from '../notes/queries';
+import useDeduplicatedSubscription from '../../core/hooks/useDeduplicatedSubscription';
+import connectionStatus from '../../core/graphql/singletons/connectionStatus';
+
+const isReactionsButtonEnabled = () => {
+  const USER_REACTIONS_ENABLED = window.meetingClientSettings.public.userReaction.enabled;
+  const REACTIONS_BUTTON_ENABLED = window.meetingClientSettings.public.app.reactionsButton.enabled;
+
+  return USER_REACTIONS_ENABLED && REACTIONS_BUTTON_ENABLED;
+};
 
 const ActionsBarContainer = (props) => {
+  const NOTES_CONFIG = window.meetingClientSettings.public.notes;
   const actionsBarStyle = layoutSelectOutput((i) => i.actionBar);
   const layoutContextDispatch = layoutDispatch();
 
-  const usingUsersContext = useContext(UsersContext);
-  const { users } = usingUsersContext;
+  const { data: presentationPageData } = useDeduplicatedSubscription(
+    CURRENT_PRESENTATION_PAGE_SUBSCRIPTION,
+  );
+  const presentationPage = presentationPageData?.pres_page_curr[0] || {};
+  const isThereCurrentPresentation = !!presentationPage?.presentationId;
 
-  const currentUser = { userId: Auth.userID, emoji: users[Auth.meetingID][Auth.userID].emoji };
+  const { data: currentMeeting } = useMeeting((m) => ({
+    externalVideo: m.externalVideo,
+    componentsFlags: m.componentsFlags,
+  }));
 
-  const amIPresenter = users[Auth.meetingID][Auth.userID].presenter;
+  const isSharingVideo = !!currentMeeting?.externalVideo?.externalVideoUrl;
 
+  const {
+    pluginsExtensibleAreasAggregatedState,
+  } = useContext(PluginsContext);
+  let actionBarItems = [];
+  if (pluginsExtensibleAreasAggregatedState.actionsBarItems) {
+    actionBarItems = [
+      ...pluginsExtensibleAreasAggregatedState.actionsBarItems,
+    ];
+  }
+
+  const { data: currentUserData } = useCurrentUser((user) => ({
+    presenter: user.presenter,
+    isModerator: user.isModerator,
+  }));
+
+  const [stopExternalVideoShare] = useMutation(EXTERNAL_VIDEO_STOP);
+
+  const currentUser = {
+    userId: Auth.userID,
+  };
+  const amIPresenter = currentUserData?.presenter;
+  const amIModerator = currentUserData?.isModerator;
+
+  const { data: pinnedPadData } = useDeduplicatedSubscription(PINNED_PAD_SUBSCRIPTION);
+  const isSharedNotesPinnedFromGraphql = !!pinnedPadData
+    && pinnedPadData.sharedNotes[0]?.sharedNotesExtId === NOTES_CONFIG.id;
+
+  const isSharedNotesPinned = isSharedNotesPinnedFromGraphql;
+  const allowExternalVideo = useIsExternalVideoEnabled();
+  const connected = useReactiveVar(connectionStatus.getConnectedStatusVar());
+  const intl = useIntl();
+  const isPresentationEnabled = useIsPresentationEnabled();
+  const isTimerFeatureEnabled = useIsTimerFeatureEnabled();
+  const isPollingEnabled = useIsPollingEnabled() && isPresentationEnabled;
   if (actionsBarStyle.display === false) return null;
+  if (!currentMeeting) return null;
 
   return (
     <ActionsBar {
       ...{
         ...props,
+        enableVideo: getFromUserSettings('bbb_enable_video', window.meetingClientSettings.public.kurento.enableVideo),
+        multiUserTools: getFromUserSettings('bbb_multi_user_tools', window.meetingClientSettings.public.whiteboard.toolbar.multiUserTools),
+        isReactionsButtonEnabled: isReactionsButtonEnabled(),
+        setPresentationIsOpen: MediaService.setPresentationIsOpen,
+        hasScreenshare: currentMeeting?.componentsFlags?.hasScreenshare ?? false,
+        isMeteorConnected: connected,
+        hasCameraAsContent: currentMeeting?.componentsFlags?.hasCameraAsContent,
+        intl,
+        allowExternalVideo,
+        isPollingEnabled,
+        isPresentationEnabled,
         currentUser,
+        amIModerator,
         layoutContextDispatch,
         actionsBarStyle,
         amIPresenter,
+        actionBarItems,
+        isThereCurrentPresentation,
+        isSharingVideo,
+        stopExternalVideoShare,
+        isSharedNotesPinned,
+        isTimerActive: currentMeeting.componentsFlags.hasTimer,
+        isTimerEnabled: isTimerFeatureEnabled,
       }
     }
     />
   );
 };
 
-const PRESENTATION_DISABLED = Meteor.settings.public.layout.hidePresentation;
-const SELECT_RANDOM_USER_ENABLED = Meteor.settings.public.selectRandomUser.enabled;
-const RAISE_HAND_BUTTON_ENABLED = Meteor.settings.public.app.raiseHandActionButton.enabled;
-
-export default withTracker(() => ({
-  amIModerator: Service.amIModerator(),
-  stopExternalVideoShare: ExternalVideoService.stopWatching,
-  enableVideo: getFromUserSettings('bbb_enable_video', Meteor.settings.public.kurento.enableVideo),
-  setPresentationIsOpen: MediaService.setPresentationIsOpen,
-  handleTakePresenter: Service.takePresenterRole,
-  currentSlidHasContent: PresentationService.currentSlidHasContent(),
-  parseCurrentSlideContent: PresentationService.parseCurrentSlideContent,
-  isSharingVideo: Service.isSharingVideo(),
-  hasScreenshare: isVideoBroadcasting(),
-  isCaptionsAvailable: CaptionsService.isCaptionsAvailable(),
-  isMeteorConnected: Meteor.status().connected,
-  isPollingEnabled: isPollingEnabled(),
-  isPresentationDisabled: PRESENTATION_DISABLED,
-  isSelectRandomUserEnabled: SELECT_RANDOM_USER_ENABLED,
-  isRaiseHandButtonEnabled: RAISE_HAND_BUTTON_ENABLED,
-  isThereCurrentPresentation: Presentations.findOne({ meetingId: Auth.meetingID, current: true },
-    { fields: {} }),
-  allowExternalVideo: isExternalVideoEnabled(),
-  setEmojiStatus: UserListService.setEmojiStatus,
-}))(injectIntl(ActionsBarContainer));
+export default ActionsBarContainer;

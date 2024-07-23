@@ -1,10 +1,3 @@
-import _ from 'lodash';
-
-const MEDIA = Meteor.settings.public.media;
-const STUN_TURN_FETCH_URL = MEDIA.stunTurnServersFetchAddress;
-const CACHE_STUN_TURN = MEDIA.cacheStunTurnServers;
-const FALLBACK_STUN_SERVER = MEDIA.fallbackStunServer;
-
 let STUN_TURN_DICT;
 let MAPPED_STUN_TURN_DICT;
 let TURN_CACHE_VALID_UNTIL = Math.floor(Date.now() / 1000);
@@ -12,6 +5,9 @@ let HAS_SEEN_TURN_SERVER = false;
 
 const fetchStunTurnServers = function (sessionToken) {
   const now = Math.floor(Date.now() / 1000);
+  const MEDIA = window.meetingClientSettings.public.media;
+  const CACHE_STUN_TURN = MEDIA.cacheStunTurnServers;
+
   if (STUN_TURN_DICT && CACHE_STUN_TURN && now < TURN_CACHE_VALID_UNTIL) return Promise.resolve(STUN_TURN_DICT);
 
   const handleStunTurnResponse = ({ stunServers, turnServers }) => {
@@ -21,7 +17,7 @@ const fetchStunTurnServers = function (sessionToken) {
 
     const turnReply = [];
     let max_ttl = null;
-    _.each(turnServers, (turnEntry) => {
+    turnServers.forEach((turnEntry) => {
       const { password, url, username } = turnEntry;
       const valid_until = parseInt(username.split(':')[0]);
       if (!max_ttl) {
@@ -48,6 +44,8 @@ const fetchStunTurnServers = function (sessionToken) {
     return Promise.resolve(stDictionary);
   };
 
+  const STUN_TURN_FETCH_URL = window.meetingClientSettings.public.media.stunTurnServersFetchAddress;
+
   const url = `${STUN_TURN_FETCH_URL}?sessionToken=${sessionToken}`;
   return fetch(url, { credentials: 'include' })
     .then(res => res.json())
@@ -61,13 +59,22 @@ const mapStunTurn = ({ stun, turn }) => {
 };
 
 const getFallbackStun = () => {
+  const FALLBACK_STUN_SERVER = window.meetingClientSettings.public.media.fallbackStunServer;
+
   const stun = FALLBACK_STUN_SERVER ? [FALLBACK_STUN_SERVER] : [];
   return { stun, turn: [] };
 };
 
-const getMappedFallbackStun = () => (FALLBACK_STUN_SERVER ? [{ urls: FALLBACK_STUN_SERVER }] : []);
+const getMappedFallbackStun = () => {
+  const FALLBACK_STUN_SERVER = window.meetingClientSettings.public.media.fallbackStunServer;
+
+  return (FALLBACK_STUN_SERVER ? [{ urls: FALLBACK_STUN_SERVER }] : []);
+};
 
 const fetchWebRTCMappedStunTurnServers = function (sessionToken) {
+  const MEDIA = window.meetingClientSettings.public.media;
+  const CACHE_STUN_TURN = MEDIA.cacheStunTurnServers;
+
   return new Promise(async (resolve, reject) => {
     try {
       const now = Math.floor(Date.now() / 1000);

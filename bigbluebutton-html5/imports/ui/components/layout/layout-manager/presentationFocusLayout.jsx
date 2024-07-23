@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import _ from 'lodash';
+import { throttle } from '/imports/utils/throttle';
 import { layoutDispatch, layoutSelect, layoutSelectInput } from '/imports/ui/components/layout/context';
 import DEFAULT_VALUES from '/imports/ui/components/layout/defaultValues';
 import { INITIAL_INPUT_STATE } from '/imports/ui/components/layout/initState';
@@ -8,6 +8,9 @@ import {
   PANELS,
   CAMERADOCK_POSITION,
 } from '/imports/ui/components/layout/enums';
+import { defaultsDeep } from '/imports/utils/array-utils';
+import Session from '/imports/ui/services/storage/in-memory';
+import { getSettingsSingletonInstance } from '/imports/ui/services/settings';
 
 const windowWidth = () => window.document.documentElement.clientWidth;
 const windowHeight = () => window.document.documentElement.clientHeight;
@@ -27,12 +30,18 @@ const PresentationFocusLayout = (props) => {
 
   const input = layoutSelect((i) => i.input);
   const deviceType = layoutSelect((i) => i.deviceType);
-  const isRTL = layoutSelect((i) => i.isRTL);
+  const Settings = getSettingsSingletonInstance();
+  const { isRTL } = Settings.application
   const fullscreen = layoutSelect((i) => i.fullscreen);
   const fontSize = layoutSelect((i) => i.fontSize);
   const currentPanelType = layoutSelect((i) => i.currentPanelType);
 
   const presentationInput = layoutSelectInput((i) => i.presentation);
+  const externalVideoInput = layoutSelectInput((i) => i.externalVideo);
+  const genericMainContentInput = layoutSelectInput((i) => i.genericMainContent);
+  const screenShareInput = layoutSelectInput((i) => i.screenShare);
+  const sharedNotesInput = layoutSelectInput((i) => i.sharedNotes);
+
   const sidebarNavigationInput = layoutSelectInput((i) => i.sidebarNavigation);
   const sidebarContentInput = layoutSelectInput((i) => i.sidebarContent);
   const cameraDockInput = layoutSelectInput((i) => i.cameraDock);
@@ -41,8 +50,9 @@ const PresentationFocusLayout = (props) => {
   const layoutContextDispatch = layoutDispatch();
 
   const prevDeviceType = usePrevious(deviceType);
+  const { isPresentationEnabled } = props;
 
-  const throttledCalculatesLayout = _.throttle(() => calculatesLayout(),
+  const throttledCalculatesLayout = throttle(() => calculatesLayout(),
     50, { trailing: true, leading: true });
 
   useEffect(() => {
@@ -58,7 +68,7 @@ const PresentationFocusLayout = (props) => {
   }, []);
 
   useEffect(() => {
-    if (deviceType === null) return;
+    if (deviceType === null) return () => null;
 
     if (deviceType !== prevDeviceType) {
       // reset layout if deviceType changed
@@ -67,52 +77,17 @@ const PresentationFocusLayout = (props) => {
     } else {
       throttledCalculatesLayout();
     }
-  }, [input, deviceType, isRTL, fontSize, fullscreen]);
+  }, [input, deviceType, isRTL, fontSize, fullscreen, isPresentationEnabled]);
 
   const init = () => {
-    if (isMobile) {
-      layoutContextDispatch({
-        type: ACTIONS.SET_LAYOUT_INPUT,
-        value: _.defaultsDeep({
+    const { sidebarContentPanel } = sidebarContentInput;
+    layoutContextDispatch({
+      type: ACTIONS.SET_LAYOUT_INPUT,
+      value: defaultsDeep(
+        {
           sidebarNavigation: {
-            isOpen: false,
-            sidebarNavPanel: sidebarNavigationInput.sidebarNavPanel,
-          },
-          sidebarContent: {
-            isOpen: false,
-            sidebarContentPanel: sidebarContentInput.sidebarContentPanel,
-          },
-          SidebarContentHorizontalResizer: {
-            isOpen: false,
-          },
-          presentation: {
-            isOpen: presentationInput.isOpen,
-            slidesLength: presentationInput.slidesLength,
-            currentSlide: {
-              ...presentationInput.currentSlide,
-            },
-          },
-          cameraDock: {
-            numCameras: cameraDockInput.numCameras,
-          },
-          externalVideo: {
-            hasExternalVideo: input.externalVideo.hasExternalVideo,
-          },
-          screenShare: {
-            hasScreenShare: input.screenShare.hasScreenShare,
-            width: input.screenShare.width,
-            height: input.screenShare.height,
-          },
-        }, INITIAL_INPUT_STATE),
-      });
-    } else {
-      const { sidebarContentPanel } = sidebarContentInput;
-
-      layoutContextDispatch({
-        type: ACTIONS.SET_LAYOUT_INPUT,
-        value: _.defaultsDeep({
-          sidebarNavigation: {
-            isOpen: input.sidebarNavigation.isOpen || sidebarContentPanel !== PANELS.NONE || false,
+            isOpen:
+              input.sidebarNavigation.isOpen || sidebarContentPanel !== PANELS.NONE || false,
           },
           sidebarContent: {
             isOpen: sidebarContentPanel !== PANELS.NONE,
@@ -134,24 +109,34 @@ const PresentationFocusLayout = (props) => {
           externalVideo: {
             hasExternalVideo: input.externalVideo.hasExternalVideo,
           },
+          genericMainContent: {
+            genericContentId: input.genericMainContent.genericContentId,
+          },
           screenShare: {
             hasScreenShare: input.screenShare.hasScreenShare,
             width: input.screenShare.width,
             height: input.screenShare.height,
           },
-        }, INITIAL_INPUT_STATE),
-      });
-    }
-    Session.set('layoutReady', true);
+        },
+        INITIAL_INPUT_STATE,
+      ),
+    });
+    Session.setItem('layoutReady', true);
     throttledCalculatesLayout();
   };
 
   const calculatesSidebarContentHeight = () => {
-    const { isOpen } = presentationInput;
-    const {
-      navBarHeight,
-      sidebarContentMinHeight,
-    } = DEFAULT_VALUES;
+    const { isOpen, slidesLength } = presentationInput;
+    const { hasExternalVideo } = externalVideoInput;
+    const { genericContentId } = genericMainContentInput;
+    const { hasScreenShare } = screenShareInput;
+    const { isPinned: isSharedNotesPinned } = sharedNotesInput;
+
+    const hasPresentation = isPresentationEnabled && slidesLength !== 0;
+    const isGeneralMediaOff = !hasPresentation && !hasExternalVideo
+      && !hasScreenShare && !isSharedNotesPinned && !genericContentId;
+
+    const { navBarHeight, sidebarContentMinHeight } = DEFAULT_VALUES;
     let height = 0;
     let minHeight = 0;
     let maxHeight = 0;
@@ -160,12 +145,11 @@ const PresentationFocusLayout = (props) => {
         height = windowHeight() - navBarHeight - bannerAreaHeight();
         minHeight = height;
         maxHeight = height;
-      } else if (cameraDockInput.numCameras > 0 && isOpen) {
+      } else if (cameraDockInput.numCameras > 0 && isOpen && !isGeneralMediaOff) {
         if (sidebarContentInput.height === 0) {
-          height = (windowHeight() * 0.75) - bannerAreaHeight();
+          height = windowHeight() * 0.75 - bannerAreaHeight();
         } else {
-          height = min(max(sidebarContentInput.height, sidebarContentMinHeight),
-            windowHeight());
+          height = min(max(sidebarContentInput.height, sidebarContentMinHeight), windowHeight());
         }
         minHeight = windowHeight() * 0.25 - bannerAreaHeight();
         maxHeight = windowHeight() * 0.75 - bannerAreaHeight();
@@ -187,7 +171,7 @@ const PresentationFocusLayout = (props) => {
     mediaAreaBounds,
     sidebarNavWidth,
     sidebarContentWidth,
-    sidebarContentHeight,
+    sidebarContentHeight
   ) => {
     const { baseCameraDockBounds } = props;
     const sidebarSize = sidebarNavWidth + sidebarContentWidth;
@@ -218,16 +202,19 @@ const PresentationFocusLayout = (props) => {
     } else {
       if (cameraDockInput.height === 0) {
         cameraDockHeight = min(
-          max((windowHeight() - sidebarContentHeight), cameraDockMinHeight),
-          (windowHeight() - cameraDockMinHeight),
+          max(windowHeight() - sidebarContentHeight, cameraDockMinHeight),
+          windowHeight() - cameraDockMinHeight
         );
+        const bannerAreaDiff =
+          windowHeight() - sidebarContentHeight - cameraDockHeight - bannerAreaHeight();
+        cameraDockHeight += bannerAreaDiff;
       } else {
         cameraDockHeight = min(
           max(cameraDockInput.height, cameraDockMinHeight),
-          (windowHeight() - cameraDockMinHeight),
+          windowHeight() - cameraDockMinHeight
         );
       }
-      cameraDockBounds.top = windowHeight() - cameraDockHeight;
+      cameraDockBounds.top = windowHeight() - cameraDockHeight - bannerAreaHeight();
       cameraDockBounds.left = !isRTL ? sidebarNavWidth : 0;
       cameraDockBounds.right = isRTL ? sidebarNavWidth : 0;
       cameraDockBounds.minWidth = sidebarContentWidth;
@@ -245,7 +232,12 @@ const PresentationFocusLayout = (props) => {
     const mediaBounds = {};
     const { element: fullscreenElement } = fullscreen;
 
-    if (fullscreenElement === 'Presentation' || fullscreenElement === 'Screenshare' || fullscreenElement === 'ExternalVideo') {
+    if (
+      fullscreenElement === 'Presentation' ||
+      fullscreenElement === 'Screenshare' ||
+      fullscreenElement === 'ExternalVideo' ||
+      fullscreenElement === 'GenericContent'
+    ) {
       mediaBounds.width = windowWidth();
       mediaBounds.height = windowHeight();
       mediaBounds.top = 0;
@@ -289,7 +281,8 @@ const PresentationFocusLayout = (props) => {
     const sidebarNavBounds = calculatesSidebarNavBounds();
     const sidebarContentBounds = calculatesSidebarContentBounds(sidebarNavWidth.width);
     const mediaAreaBounds = calculatesMediaAreaBounds(
-      sidebarNavWidth.width, sidebarContentWidth.width,
+      sidebarNavWidth.width,
+      sidebarContentWidth.width
     );
     const navbarBounds = calculatesNavbarBounds(mediaAreaBounds);
     const actionbarBounds = calculatesActionbarBounds(mediaAreaBounds);
@@ -301,7 +294,7 @@ const PresentationFocusLayout = (props) => {
       mediaAreaBounds,
       sidebarNavWidth.width,
       sidebarContentWidth.width,
-      sidebarContentHeight.height,
+      sidebarContentHeight.height
     );
     const { isOpen } = presentationInput;
 
@@ -336,9 +329,9 @@ const PresentationFocusLayout = (props) => {
     layoutContextDispatch({
       type: ACTIONS.SET_CAPTIONS_OUTPUT,
       value: {
-        left: !isRTL ? (sidebarSize + captionsMargin) : null,
-        right: isRTL ? (sidebarSize + captionsMargin) : null,
-        maxWidth: mediaAreaBounds.width - (captionsMargin * 2),
+        left: !isRTL ? sidebarSize + captionsMargin : null,
+        right: isRTL ? sidebarSize + captionsMargin : null,
+        maxWidth: mediaAreaBounds.width - captionsMargin * 2,
       },
     });
 
@@ -463,6 +456,17 @@ const PresentationFocusLayout = (props) => {
 
     layoutContextDispatch({
       type: ACTIONS.SET_EXTERNAL_VIDEO_OUTPUT,
+      value: {
+        width: isOpen ? mediaBounds.width : 0,
+        height: isOpen ? mediaBounds.height : 0,
+        top: mediaBounds.top,
+        left: mediaBounds.left,
+        right: mediaBounds.right,
+      },
+    });
+
+    layoutContextDispatch({
+      type: ACTIONS.SET_GENERIC_CONTENT_OUTPUT,
       value: {
         width: isOpen ? mediaBounds.width : 0,
         height: isOpen ? mediaBounds.height : 0,

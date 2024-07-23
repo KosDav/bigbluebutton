@@ -1,6 +1,5 @@
 import React, { Component } from 'react';
 import { defineMessages } from 'react-intl';
-import { withModalMounter } from '/imports/ui/components/common/modal/service';
 import PropTypes from 'prop-types';
 import Styled from './styles';
 
@@ -19,12 +18,14 @@ const propTypes = {
   confirmButtonColor: PropTypes.string,
   disableConfirmButton: PropTypes.bool,
   description: PropTypes.string,
+  hideConfirmButton: PropTypes.bool,
 };
 
 const defaultProps = {
   confirmButtonColor: 'primary',
   disableConfirmButton: false,
   description: '',
+  hideConfirmButton: false,
 };
 
 class ConfirmationModal extends Component {
@@ -39,7 +40,7 @@ class ConfirmationModal extends Component {
   render() {
     const {
       intl,
-      mountModal,
+      setIsOpen,
       onConfirm,
       title,
       titleMessageId,
@@ -47,10 +48,15 @@ class ConfirmationModal extends Component {
       checkboxMessageId,
       confirmButtonColor,
       confirmButtonLabel,
+      cancelButtonLabel,
+      hideConfirmButton,
       confirmButtonDataTest,
       confirmParam,
       disableConfirmButton,
       description,
+      isOpen,
+      onRequestClose,
+      priority,
     } = this.props;
 
     const {
@@ -61,9 +67,14 @@ class ConfirmationModal extends Component {
 
     return (
       <Styled.ConfirmationModal
-        onRequestClose={() => mountModal(null)}
+        onRequestClose={() => setIsOpen(false)}
         contentLabel={title}
         title={title || intl.formatMessage({ id: titleMessageId }, { 0: titleMessageExtra })}
+        {...{
+          isOpen,
+          onRequestClose,
+          priority,
+        }}
       >
         <Styled.Container>
           <Styled.Description>
@@ -85,19 +96,21 @@ class ConfirmationModal extends Component {
           </Styled.Description>
 
           <Styled.Footer>
-            <Styled.ConfirmationButton
-              color={confirmButtonColor}
-              label={confirmButtonLabel ? confirmButtonLabel : intl.formatMessage(messages.yesLabel)}
-              disabled={disableConfirmButton}
-              data-test={confirmButtonDataTest}
-              onClick={() => {
-                onConfirm(confirmParam, checked);
-                mountModal(null);
-              }}
-            />
+            {!hideConfirmButton && (
+              <Styled.ConfirmationButton
+                color={confirmButtonColor}
+                label={confirmButtonLabel || intl.formatMessage(messages.yesLabel)}
+                disabled={disableConfirmButton}
+                data-test={confirmButtonDataTest}
+                onClick={() => {
+                  onConfirm(confirmParam, checked);
+                  setIsOpen(false);
+                }}
+              />
+            )}
             <Styled.CancelButton
-              label={intl.formatMessage(messages.noLabel)}
-              onClick={() => mountModal(null)}
+              label={cancelButtonLabel || intl.formatMessage(messages.noLabel)}
+              onClick={() => setIsOpen(false)}
             />
           </Styled.Footer>
         </Styled.Container>
@@ -109,4 +122,4 @@ class ConfirmationModal extends Component {
 ConfirmationModal.propTypes = propTypes;
 ConfirmationModal.defaultProps = defaultProps;
 
-export default withModalMounter(ConfirmationModal);
+export default ConfirmationModal;

@@ -1,21 +1,11 @@
 import { defineMessages } from 'react-intl';
-import ConnectionStatus from '/imports/api/connection-status';
-import Users from '/imports/api/users';
-import UsersPersistentData from '/imports/api/users-persistent-data';
+import { makeVar } from '@apollo/client';
 import Auth from '/imports/ui/services/auth';
-import Settings from '/imports/ui/services/settings';
-import _ from 'lodash';
-import { Session } from 'meteor/session';
+import Session from '/imports/ui/services/storage/in-memory';
 import { notify } from '/imports/ui/services/notification';
-import { makeCall } from '/imports/ui/services/api';
 import AudioService from '/imports/ui/components/audio/service';
-import VideoService from '/imports/ui/components/video-provider/service';
 import ScreenshareService from '/imports/ui/components/screenshare/service';
-
-const STATS = Meteor.settings.public.stats;
-const NOTIFICATION = STATS.notification;
-const STATS_INTERVAL = STATS.interval;
-const ROLE_MODERATOR = Meteor.settings.public.user.role_moderator;
+import connectionStatus from '../../core/graphql/singletons/connectionStatus';
 
 const intlMessages = defineMessages({
   saved: {
@@ -28,33 +18,35 @@ const intlMessages = defineMessages({
   },
 });
 
-let lastLevel = -1;
-let lastRtt = null;
-const levelDep = new Tracker.Dependency();
+const NETWORK_MONITORING_INTERVAL_MS = 2000;
+
+const lastLevel = makeVar();
 
 let statsTimeout = null;
 
 const URL_REGEX = new RegExp(/^(http|https):\/\/[^ "]+$/);
 const getHelp = () => {
+  const STATS = window.meetingClientSettings.public.stats;
+
   if (URL_REGEX.test(STATS.help)) return STATS.help;
 
   return null;
 };
 
 const getStats = () => {
-  levelDep.depend();
-  return STATS.level[lastLevel];
+  const STATS = window.meetingClientSettings.public.stats;
+  return STATS.level[lastLevel()];
 };
 
 const setStats = (level = -1, type = 'recovery', value = {}) => {
-  if (lastLevel !== level) {
-    lastLevel = level;
-    levelDep.changed();
+  if (lastLevel() !== level) {
+    lastLevel(level);
   }
-  addConnectionStatus(level, type, value);
 };
 
 const handleAudioStatsEvent = (event) => {
+  const STATS = window.meetingClientSettings.public.stats;
+
   const { detail } = event;
   if (detail) {
     const { loss, jitter } = detail;
@@ -72,28 +64,9 @@ const handleAudioStatsEvent = (event) => {
   }
 };
 
-const handleSocketStatsEvent = (event) => {
-  const { detail } = event;
-  if (detail) {
-    const { rtt } = detail;
-    let active = false;
-    let level = -1;
-    // From higher to lower
-    for (let i = STATS.level.length - 1; i >= 0; i--) {
-      if (rtt >= STATS.rtt[i]) {
-        active = true;
-        level = i;
-        break;
-      }
-    }
-
-    setStats(level, 'socket', { rtt });
-
-    if (active) startStatsTimeout();
-  }
-};
-
 const startStatsTimeout = () => {
+  const STATS = window.meetingClientSettings.public.stats;
+
   if (statsTimeout !== null) clearTimeout(statsTimeout);
 
   statsTimeout = setTimeout(() => {
@@ -101,189 +74,37 @@ const startStatsTimeout = () => {
   }, STATS.timeout);
 };
 
-const addConnectionStatus = (level, type, value) => {
-  const status = level !== -1 ? STATS.level[level] : 'normal';
-
-  makeCall('addConnectionStatus', status, type, value);
-};
-
-let rttCalcStartedAt = 0;
-
-const fetchRoundTripTime = () => {
-  // if client didn't receive response from last "voidConnection"
-  // calculate the rtt from last call time and notify user of connection loss
-  if (rttCalcStartedAt !== 0) {
-    const tf = Date.now();
-    const rtt = tf - rttCalcStartedAt;
-
-    if (rtt > STATS.rtt[STATS.rtt.length - 1]) {
-      const event = new CustomEvent('socketstats', { detail: { rtt } });
-      window.dispatchEvent(event);
-    }
-  }
-
-  const t0 = Date.now();
-  rttCalcStartedAt = t0;
-
-  makeCall('voidConnection', lastRtt).then(() => {
-    const tf = Date.now();
-    const rtt = tf - t0;
-    const event = new CustomEvent('socketstats', { detail: { rtt } });
-    window.dispatchEvent(event);
-    lastRtt = rtt;
-
-    rttCalcStartedAt = 0;
-  });
-};
-
 const sortLevel = (a, b) => {
-  const indexOfA = STATS.level.indexOf(a.level);
-  const indexOfB = STATS.level.indexOf(b.level);
+  const RTT = window.meetingClientSettings.public.stats.rtt;
 
-  if (indexOfA < indexOfB) return 1;
-  if (indexOfA === indexOfB) return 0;
-  if (indexOfA > indexOfB) return -1;
+  if (!a.lastUnstableStatus && !b.lastUnstableStatus) return 0;
+  if (!a.lastUnstableStatus) return 1;
+  if (!b.lastUnstableStatus) return -1;
+
+  const rttOfA = RTT[a.lastUnstableStatus];
+  const rttOfB = RTT[b.lastUnstableStatus];
+
+  return rttOfB - rttOfA;
 };
 
-const sortOffline = (a, b) => {
-  if (a.offline && !b.offline) return 1;
-  if (a.offline === b.offline) return 0;
-  if (!a.offline && b.offline) return -1;
+const sortOnline = (a, b) => {
+  if (!a.user.isOnline && b.user.isOnline) return 1;
+  if (a.user.isOnline === b.user.isOnline) return 0;
+  if (a.user.isOnline && !b.user.isOnline) return -1;
 };
 
-const getConnectionStatus = () => {
-  const connectionLossTimeThreshold = new Date().getTime() - (STATS_INTERVAL);
-
-  const selector = {
-    meetingId: Auth.meetingID,
-    $or: [
-      { status: { $exists: true } },
-      { connectionAliveAt: { $lte: connectionLossTimeThreshold } },
-    ],
-  };
-
-  if (!isModerator()) {
-    selector.userId = Auth.userID;
-  }
-
-  const connectionStatus = ConnectionStatus.find(selector).fetch().map((userStatus) => {
-    const {
-      userId,
-      status,
-      statusUpdatedAt,
-      connectionAliveAt,
-    } = userStatus;
-
-    return {
-      userId,
-      status,
-      statusUpdatedAt,
-      connectionAliveAt,
-    };
-  });
-
-  return UsersPersistentData.find(
-    { meetingId: Auth.meetingID },
-    {
-      fields:
-      {
-        userId: 1,
-        name: 1,
-        role: 1,
-        avatar: 1,
-        color: 1,
-        loggedOut: 1,
-      },
-    },
-  ).fetch().reduce((result, user) => {
-    const {
-      userId,
-      name,
-      role,
-      avatar,
-      color,
-      loggedOut,
-    } = user;
-
-    const userStatus = connectionStatus.find((userConnStatus) => userConnStatus.userId === userId);
-
-    if (userStatus) {
-      const notResponding = userStatus.connectionAliveAt < connectionLossTimeThreshold;
-
-      if (userStatus.status || (!loggedOut && notResponding)) {
-        result.push({
-          name,
-          avatar,
-          offline: loggedOut,
-          notResponding,
-          you: Auth.userID === userId,
-          moderator: role === ROLE_MODERATOR,
-          color,
-          status: notResponding ? 'critical' : userStatus.status,
-          timestamp: notResponding ? userStatus.connectionAliveAt : userStatus.statusUpdatedAt,
-        });
-      }
-    }
-
-    return result;
-  }, []).sort(sortLevel).sort(sortOffline);
-};
-
-const isEnabled = () => STATS.enabled;
-
-let roundTripTimeInterval = null;
-
-const startRoundTripTime = () => {
-  if (!isEnabled()) return;
-
-  stopRoundTripTime();
-
-  roundTripTimeInterval = setInterval(fetchRoundTripTime, STATS_INTERVAL);
-};
-
-const stopRoundTripTime = () => {
-  if (roundTripTimeInterval) {
-    clearInterval(roundTripTimeInterval);
-  }
-};
-
-const isModerator = () => {
-  const user = Users.findOne(
-    {
-      meetingId: Auth.meetingID,
-      userId: Auth.userID,
-    },
-    { fields: { role: 1 } },
-  );
-
-  if (user && user.role === ROLE_MODERATOR) {
-    return true;
-  }
-
-  return false;
-};
-
-if (STATS.enabled) {
-  window.addEventListener('audiostats', handleAudioStatsEvent);
-  window.addEventListener('socketstats', handleSocketStatsEvent);
-}
-
-const updateDataSavingSettings = (dataSaving, intl) => {
-  if (!_.isEqual(Settings.dataSaving, dataSaving)) {
-    Settings.dataSaving = dataSaving;
-    Settings.save();
-    if (intl) notify(intl.formatMessage(intlMessages.saved), 'info', 'settings');
-  }
-};
+const isEnabled = () => window.meetingClientSettings.public.stats.enabled;
 
 const getNotified = () => {
-  const notified = Session.get('connectionStatusNotified');
+  const notified = Session.getItem('connectionStatusNotified');
 
   // Since notified can be undefined we need a boolean verification
   return notified === true;
 };
 
 const notification = (level, intl) => {
+  const NOTIFICATION = window.meetingClientSettings.public.stats.notification;
+
   if (!NOTIFICATION[level]) return null;
 
   // Avoid toast spamming
@@ -291,8 +112,7 @@ const notification = (level, intl) => {
   if (notified) {
     return null;
   }
-  Session.set('connectionStatusNotified', true);
-
+  Session.setItem('connectionStatusNotified', true);
 
   if (intl) notify(intl.formatMessage(intlMessages.notification), level, 'warning');
 };
@@ -390,8 +210,8 @@ const getAudioData = async () => {
  * @returns An Object containing video data for all video peers and screenshare
  *          peer
  */
-const getVideoData = async () => {
-  const camerasData = await VideoService.getStats() || {};
+const getVideoData = async (getVideoStreamsStats) => {
+  const camerasData = await getVideoStreamsStats() || {};
 
   const screenshareData = await ScreenshareService.getStats() || {};
 
@@ -406,10 +226,10 @@ const getVideoData = async () => {
  * For audio, this will get information about the mic/listen-only stream.
  * @returns An Object containing all this data.
  */
-const getNetworkData = async () => {
+const getNetworkData = async (getVideoStreamsStats) => {
   const audio = await getAudioData();
 
-  const video = await getVideoData();
+  const video = await getVideoData(getVideoStreamsStats);
 
   const user = {
     time: new Date(),
@@ -431,7 +251,7 @@ const getNetworkData = async () => {
 };
 
 /**
- * Calculates both upload and download rates using data retreived from getStats
+ * Calculates both upload and download rates using data retrieved from getStats
  * API. For upload (outbound-rtp) we use both bytesSent and timestamp fields.
  * byteSent field contains the number of octets sent at the given timestamp,
  * more information can be found in:
@@ -558,18 +378,119 @@ const calculateBitsPerSecondFromMultipleData = (currentData, previousData) => {
   return result;
 };
 
+const sortConnectionData = (connectionData) => connectionData.sort(sortLevel).sort(sortOnline);
+
+export function getStatus(levels, value) {
+  const sortedLevels = Object.keys(levels)
+    .map(Number)
+    .sort((a, b) => a - b);
+  // eslint-disable-next-line no-plusplus
+  for (let i = 0; i < sortedLevels.length; i++) {
+    if (value < sortedLevels[i]) {
+      return i === 0 ? 'normal' : levels[sortedLevels[i - 1]];
+    }
+    if (i === sortedLevels.length - 1) {
+      return levels[sortedLevels[i]];
+    }
+  }
+
+  return levels[sortedLevels[sortedLevels.length - 1]];
+}
+
+/**
+   * Start monitoring the network data.
+   * @return {Promise} A Promise that resolves when process started.
+   */
+export async function startMonitoringNetwork(getVideoStreamsStats) {
+  let previousData = await getNetworkData(getVideoStreamsStats);
+
+  setInterval(async () => {
+    const data = await getNetworkData(getVideoStreamsStats);
+
+    const {
+      outbound: audioCurrentUploadRate,
+      inbound: audioCurrentDownloadRate,
+    } = calculateBitsPerSecond(data.audio, previousData.audio);
+
+    const inboundRtp = getDataType(data.audio, 'inbound-rtp')[0];
+
+    const jitter = inboundRtp
+      ? inboundRtp.jitterBufferAverage
+      : 0;
+
+    const packetsLost = inboundRtp
+      ? inboundRtp.packetsLost
+      : 0;
+
+    const audio = {
+      audioCurrentUploadRate,
+      audioCurrentDownloadRate,
+      jitter,
+      packetsLost,
+      transportStats: data.audio.transportStats,
+    };
+
+    const {
+      outbound: videoCurrentUploadRate,
+      inbound: videoCurrentDownloadRate,
+    } = calculateBitsPerSecondFromMultipleData(data.video,
+      previousData.video);
+
+    const video = {
+      videoCurrentUploadRate,
+      videoCurrentDownloadRate,
+    };
+
+    const { user } = data;
+
+    const networkData = {
+      user,
+      audio,
+      video,
+    };
+
+    previousData = data;
+
+    connectionStatus.setNetworkData(networkData);
+    connectionStatus
+      .setJitterStatus(getStatus(window.meetingClientSettings.public.stats.jitter, jitter));
+
+    connectionStatus
+      .setPacketLossStatus(getStatus(window.meetingClientSettings.public.stats.loss, packetsLost));
+  }, NETWORK_MONITORING_INTERVAL_MS);
+}
+
+export function getWorstStatus(statuses) {
+  const statusOrder = {
+    normal: 0,
+    warning: 1,
+    danger: 2,
+    critical: 3,
+  };
+
+  let worstStatus = 'normal';
+  // eslint-disable-next-line
+  for (let status of statuses) {
+    if (statusOrder[status] > statusOrder[worstStatus]) {
+      worstStatus = status;
+    }
+  }
+
+  return worstStatus;
+}
+
 export default {
-  isModerator,
-  getConnectionStatus,
   getStats,
   getHelp,
   isEnabled,
   notification,
-  startRoundTripTime,
-  stopRoundTripTime,
-  updateDataSavingSettings,
   getNetworkData,
   calculateBitsPerSecond,
   calculateBitsPerSecondFromMultipleData,
   getDataType,
+  sortConnectionData,
+  handleAudioStatsEvent,
+  startMonitoringNetwork,
+  getStatus,
+  getWorstStatus,
 };

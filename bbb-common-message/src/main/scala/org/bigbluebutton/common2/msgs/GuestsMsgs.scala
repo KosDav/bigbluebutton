@@ -19,7 +19,7 @@ case class GetGuestsWaitingApprovalRespMsg(
     body:   GetGuestsWaitingApprovalRespMsgBody
 ) extends BbbCoreMsg
 case class GetGuestsWaitingApprovalRespMsgBody(guests: Vector[GuestWaitingVO])
-case class GuestWaitingVO(intId: String, name: String, role: String, guest: Boolean, avatar: String, authenticated: Boolean, registeredOn: Long)
+case class GuestWaitingVO(intId: String, name: String, role: String, guest: Boolean, avatar: String, color: String, authenticated: Boolean, registeredOn: Long)
 
 /**
  * Message sent to client for list of guest waiting for approval. This is sent when
@@ -62,16 +62,6 @@ case class GuestApprovedEvtMsg(
     body:   GuestApprovedEvtMsgBody
 ) extends BbbCoreMsg
 case class GuestApprovedEvtMsgBody(status: String, approvedBy: String)
-
-/**
- * Message from bbb-web when it detects a guest stopped polling for his status.
- */
-object GuestWaitingLeftMsg { val NAME = "GuestWaitingLeftMsg" }
-case class GuestWaitingLeftMsg(
-    header: BbbClientMsgHeader,
-    body:   GuestWaitingLeftMsgBody
-) extends StandardMsg
-case class GuestWaitingLeftMsgBody(userId: String)
 
 /**
  * Message sent to all clients that a guest left the waiting page.

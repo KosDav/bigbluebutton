@@ -29,6 +29,8 @@ class AudioBroker extends BaseBroker {
     // signalCandidates
     // traceLogs
     // networkPriority
+    // gatheringTimeout
+    // transparentListenOnly
     Object.assign(this, options);
   }
 
@@ -85,6 +87,7 @@ class AudioBroker extends BaseBroker {
           trace: this.traceLogs,
           networkPriorities: this.networkPriority ? { audio: this.networkPriority } : undefined,
           mediaStreamFactory: this.mediaStreamFactory,
+          gatheringTimeout: this.gatheringTimeout,
         };
 
         const peerRole = this.role === 'sendrecv' ? this.role : 'recvonly';
@@ -94,11 +97,20 @@ class AudioBroker extends BaseBroker {
         this.webRtcPeer.peerConnection.onconnectionstatechange = this.handleConnectionStateChange.bind(this);
 
         if (this.offering) {
+          // We are the offerer
           this.webRtcPeer.generateOffer()
             .then(this.sendStartReq.bind(this))
             .catch(this._handleOfferGenerationFailure.bind(this));
-        } else {
+        } else if (peerRole === 'recvonly') {
+          // We are the answerer and we are only listening, so we don't need
+          // to acquire local media
           this.sendStartReq();
+        } else {
+          // We are the answerer and we are sending audio, so we need to acquire
+          // local media before sending the start request
+          this.webRtcPeer.mediaStreamFactory()
+            .then(() => { this.sendStartReq(); })
+            .catch(this._handleOfferGenerationFailure.bind(this));
         }
 
         resolve();
@@ -198,6 +210,7 @@ class AudioBroker extends BaseBroker {
       sdpOffer: offer,
       mediaServer: this.mediaServer,
       extension: this.extension,
+      transparentListenOnly: this.transparentListenOnly,
     };
 
     logger.debug({

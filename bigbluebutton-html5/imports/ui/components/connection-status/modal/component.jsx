@@ -3,12 +3,11 @@ import { FormattedTime, defineMessages, injectIntl } from 'react-intl';
 import PropTypes from 'prop-types';
 import UserAvatar from '/imports/ui/components/user-avatar/component';
 import Icon from '/imports/ui/components/connection-status/icon/component';
-import Switch from '/imports/ui/components/common/switch/component';
 import Service from '../service';
 import Styled from './styles';
-import ConnectionStatusHelper from '../status-helper/container';
+import ConnectionStatusHelper from '../status-helper/component';
+import Auth from '/imports/ui/services/auth';
 
-const NETWORK_MONITORING_INTERVAL_MS = 2000;
 const MIN_TIMEOUT = 3000;
 
 const intlMessages = defineMessages({
@@ -30,7 +29,7 @@ const intlMessages = defineMessages({
   },
   more: {
     id: 'app.connection-status.more',
-    description: 'More about conectivity issues',
+    description: 'More about connectivity issues',
   },
   audioLabel: {
     id: 'app.settings.audioTab.label',
@@ -135,7 +134,7 @@ const intlMessages = defineMessages({
 });
 
 const propTypes = {
-  closeModal: PropTypes.func.isRequired,
+  setModalIsOpen: PropTypes.func.isRequired,
   intl: PropTypes.shape({
     formatMessage: PropTypes.func.isRequired,
   }).isRequired,
@@ -163,8 +162,7 @@ class ConnectionStatusComponent extends PureComponent {
     this.help = Service.getHelp();
     this.state = {
       selectedTab: 0,
-      dataSaving: props.dataSaving,
-      hasNetworkData: false,
+      hasNetworkData: true,
       copyButtonText: intl.formatMessage(intlMessages.copy),
       networkData: {
         user: {
@@ -183,7 +181,6 @@ class ConnectionStatusComponent extends PureComponent {
         },
       },
     };
-    this.displaySettingsStatus = this.displaySettingsStatus.bind(this);
     this.setButtonMessage = this.setButtonMessage.bind(this);
     this.rateInterval = null;
     this.audioUploadLabel = intl.formatMessage(intlMessages.audioUploadRate);
@@ -193,24 +190,18 @@ class ConnectionStatusComponent extends PureComponent {
     this.handleSelectTab = this.handleSelectTab.bind(this);
   }
 
-  async componentDidMount() {
-    this.startMonitoringNetwork();
-  }
+  // async componentDidMount() {
+  //   this.startMonitoringNetwork();
+  // }
 
   componentWillUnmount() {
-    Meteor.clearInterval(this.rateInterval);
+    clearInterval(this.rateInterval);
   }
 
   handleSelectTab(tab) {
     this.setState({
       selectedTab: tab,
     });
-  }
-
-  handleDataSavingChange(key) {
-    const { dataSaving } = this.state;
-    dataSaving[key] = !dataSaving[key];
-    this.setState(dataSaving);
   }
 
   setButtonMessage(msg) {
@@ -220,85 +211,14 @@ class ConnectionStatusComponent extends PureComponent {
   }
 
   /**
-   * Start monitoring the network data.
-   * @return {Promise} A Promise that resolves when process started.
-   */
-  async startMonitoringNetwork() {
-    let previousData = await Service.getNetworkData();
-    this.rateInterval = Meteor.setInterval(async () => {
-      const data = await Service.getNetworkData();
-
-      const {
-        outbound: audioCurrentUploadRate,
-        inbound: audioCurrentDownloadRate,
-      } = Service.calculateBitsPerSecond(data.audio, previousData.audio);
-
-      const inboundRtp = Service.getDataType(data.audio, 'inbound-rtp')[0];
-
-      const jitter = inboundRtp
-        ? inboundRtp.jitterBufferAverage
-        : 0;
-
-      const packetsLost = inboundRtp
-        ? inboundRtp.packetsLost
-        : 0;
-
-      const audio = {
-        audioCurrentUploadRate,
-        audioCurrentDownloadRate,
-        jitter,
-        packetsLost,
-        transportStats: data.audio.transportStats,
-      };
-
-      const {
-        outbound: videoCurrentUploadRate,
-        inbound: videoCurrentDownloadRate,
-      } = Service.calculateBitsPerSecondFromMultipleData(data.video,
-        previousData.video);
-
-      const video = {
-        videoCurrentUploadRate,
-        videoCurrentDownloadRate,
-      };
-
-      const { user } = data;
-
-      const networkData = {
-        user,
-        audio,
-        video,
-      };
-
-      previousData = data;
-      this.setState({
-        networkData,
-        hasNetworkData: true,
-      });
-    }, NETWORK_MONITORING_INTERVAL_MS);
-  }
-
-  displaySettingsStatus(status) {
-    const { intl } = this.props;
-
-    return (
-      <Styled.ToggleLabel>
-        {status ? intl.formatMessage(intlMessages.on)
-          : intl.formatMessage(intlMessages.off)}
-      </Styled.ToggleLabel>
-    );
-  }
-
-  /**
    * Copy network data to clipboard
    * @return {Promise}   A Promise that is resolved after data is copied.
    *
    *
    */
   async copyNetworkData() {
-    const { intl } = this.props;
+    const { intl, networkData } = this.props;
     const {
-      networkData,
       hasNetworkData,
     } = this.state;
 
@@ -333,66 +253,70 @@ class ConnectionStatusComponent extends PureComponent {
 
   renderConnections() {
     const {
-      connectionStatus,
+      connectionData,
       intl,
     } = this.props;
 
     const { selectedTab } = this.state;
 
-    if (isConnectionStatusEmpty(connectionStatus)) return this.renderEmpty();
+    if (isConnectionStatusEmpty(connectionData)) return this.renderEmpty();
 
-    let connections = connectionStatus;
+    let connections = connectionData;
     if (selectedTab === 1) {
-      connections = connections.filter(conn => conn.you);
+      connections = connections.filter((curr) => curr.user.userId === Auth.userID);
       if (isConnectionStatusEmpty(connections)) return this.renderEmpty();
     }
 
     return connections.map((conn, index) => {
-      const dateTime = new Date(conn.timestamp);
+      const dateTime = new Date(conn.lastUnstableStatusAt);
       return (
         <Styled.Item
-          key={`${conn?.name}-${dateTime}`}
+          key={`${conn.user.name}-${conn.user.userId}`}
           last={(index + 1) === connections.length}
           data-test="connectionStatusItemUser"
         >
           <Styled.Left>
             <Styled.Avatar>
               <UserAvatar
-                you={conn.you}
-                avatar={conn.avatar}
-                moderator={conn.moderator}
-                color={conn.color}
+                you={conn.user.userId === Auth.userID}
+                avatar={conn.user.avatar}
+                moderator={conn.user.isModerator}
+                color={conn.user.color}
               >
-                {conn.name.toLowerCase().slice(0, 2)}
+                {conn.user.name.toLowerCase().slice(0, 2)}
               </UserAvatar>
             </Styled.Avatar>
 
             <Styled.Name>
               <Styled.Text
-                offline={conn.offline}
-                data-test={conn.offline ? "offlineUser" : null}
+                offline={!conn.user.isOnline}
+                data-test={!conn.user.isOnline ? "offlineUser" : null}
               >
-                {conn.name}
-                {conn.offline ? ` (${intl.formatMessage(intlMessages.offline)})` : null}
+                {conn.user.name}
+                {!conn.user.isOnline ? ` (${intl.formatMessage(intlMessages.offline)})` : null}
               </Styled.Text>
             </Styled.Name>
-            <Styled.Status aria-label={`${intl.formatMessage(intlMessages.title)} ${conn.status}`}>
+            <Styled.Status aria-label={`${intl.formatMessage(intlMessages.title)} ${conn.lastUnstableStatus}`}>
               <Styled.Icon>
-                <Icon level={conn.status} />
+                <Icon level={conn.lastUnstableStatus} />
               </Styled.Icon>
             </Styled.Status>
-            { conn.notResponding && !conn.offline
+            {conn.clientNotResponding && conn.user.isOnline
               ? (
                 <Styled.ClientNotRespondingText>
                   {intl.formatMessage(intlMessages.clientNotResponding)}
                 </Styled.ClientNotRespondingText>
-              ) : null }
+              ) : null}
           </Styled.Left>
           <Styled.Right>
             <Styled.Time>
-              <time dateTime={dateTime}>
-                <FormattedTime value={dateTime} />
-              </time>
+              {conn.lastUnstableStatusAt
+                ? (
+                  <time dateTime={dateTime}>
+                    <FormattedTime value={dateTime} />
+                  </time>
+                )
+                : null}
             </Styled.Time>
           </Styled.Right>
         </Styled.Item>
@@ -400,81 +324,13 @@ class ConnectionStatusComponent extends PureComponent {
     });
   }
 
-  renderDataSaving() {
-    const {
-      intl,
-      dataSaving,
-    } = this.props;
-
-    const {
-      viewParticipantsWebcams,
-      viewScreenshare,
-    } = dataSaving;
-
-    return (
-      <Styled.DataSaving>
-        <Styled.Description>
-          {intl.formatMessage(intlMessages.dataSaving)}
-        </Styled.Description>
-
-        <Styled.Row>
-          <Styled.Col aria-hidden="true">
-            <Styled.FormElement>
-              <Styled.Label>
-                {intl.formatMessage(intlMessages.webcam)}
-              </Styled.Label>
-            </Styled.FormElement>
-          </Styled.Col>
-          <Styled.Col>
-            <Styled.FormElementRight>
-              {this.displaySettingsStatus(viewParticipantsWebcams)}
-              <Switch
-                icons={false}
-                defaultChecked={viewParticipantsWebcams}
-                onChange={() => this.handleDataSavingChange('viewParticipantsWebcams')}
-                ariaLabelledBy="webcam"
-                ariaLabel={intl.formatMessage(intlMessages.webcam)}
-                data-test="dataSavingWebcams"
-                showToggleLabel={false}
-              />
-            </Styled.FormElementRight>
-          </Styled.Col>
-        </Styled.Row>
-
-        <Styled.Row>
-          <Styled.Col aria-hidden="true">
-            <Styled.FormElement>
-              <Styled.Label>
-                {intl.formatMessage(intlMessages.screenshare)}
-              </Styled.Label>
-            </Styled.FormElement>
-          </Styled.Col>
-          <Styled.Col>
-            <Styled.FormElementRight>
-              {this.displaySettingsStatus(viewScreenshare)}
-              <Switch
-                icons={false}
-                defaultChecked={viewScreenshare}
-                onChange={() => this.handleDataSavingChange('viewScreenshare')}
-                ariaLabelledBy="screenshare"
-                ariaLabel={intl.formatMessage(intlMessages.screenshare)}
-                data-test="dataSavingScreenshare"
-                showToggleLabel={false}
-              />
-            </Styled.FormElementRight>
-          </Styled.Col>
-        </Styled.Row>
-      </Styled.DataSaving>
-    );
-  }
-
   /**
-   * Render network data , containing information abount current upload and
+   * Render network data , containing information about current upload and
    * download rates
    * @return {Object} The component to be renderized.
    */
   renderNetworkData() {
-    const { enableNetworkStats } = Meteor.settings.public.app;
+    const { enableNetworkStats } = window.meetingClientSettings.public.app;
 
     if (!enableNetworkStats) {
       return null;
@@ -487,9 +343,9 @@ class ConnectionStatusComponent extends PureComponent {
       videoDownloadLabel,
     } = this;
 
-    const { intl, closeModal } = this.props;
+    const { intl, setModalIsOpen, connectionData } = this.props;
 
-    const { networkData, dataSaving, dataPage } = this.state;
+    const { networkData } = this.props;
 
     const {
       audioCurrentUploadRate,
@@ -526,7 +382,10 @@ class ConnectionStatusComponent extends PureComponent {
       >
         <Styled.HelperWrapper>
           <Styled.Helper>
-            <ConnectionStatusHelper closeModal={() => closeModal(dataSaving, intl)} />
+            <ConnectionStatusHelper
+              connectionData={connectionData}
+              closeModal={() => setModalIsOpen(false)}
+            />
           </Styled.Helper>
         </Styled.HelperWrapper>
         <Styled.NetworkDataContent>
@@ -537,7 +396,7 @@ class ConnectionStatusComponent extends PureComponent {
             </Styled.NetworkData>
             <Styled.NetworkData>
               <div>{`${videoUploadLabel}`}</div>
-              <div>{`${videoCurrentUploadRate}k ↑`}</div>
+              <div data-test="videoUploadRateData">{`${videoCurrentUploadRate}k ↑`}</div>
             </Styled.NetworkData>
             <Styled.NetworkData>
               <div>{`${intl.formatMessage(intlMessages.jitter)}`}</div>
@@ -577,7 +436,7 @@ class ConnectionStatusComponent extends PureComponent {
    * @return {Object} - The component to be renderized
    */
   renderCopyDataButton() {
-    const { enableCopyNetworkStatsButton } = Meteor.settings.public.app;
+    const { enableCopyNetworkStatsButton } = window.meetingClientSettings.public.app;
 
     if (!enableCopyNetworkStatsButton) {
       return null;
@@ -589,7 +448,7 @@ class ConnectionStatusComponent extends PureComponent {
         <Styled.Copy
           disabled={!hasNetworkData}
           role="button"
-	        data-test="copyStats"
+          data-test="copyStats"
           onClick={this.copyNetworkData.bind(this)}
           onKeyPress={this.copyNetworkData.bind(this)}
           tabIndex={0}
@@ -602,16 +461,21 @@ class ConnectionStatusComponent extends PureComponent {
 
   render() {
     const {
-      closeModal,
+      setModalIsOpen,
       intl,
+      isModalOpen,
+      amIModerator,
     } = this.props;
 
-    const { dataSaving, selectedTab } = this.state;
+    const { selectedTab } = this.state;
 
     return (
       <Styled.ConnectionStatusModal
-        onRequestClose={() => closeModal(dataSaving, intl)}
+        priority="low"
+        onRequestClose={() => setModalIsOpen(false)}
+        setIsOpen={setModalIsOpen}
         hideBorder
+        isOpen={isModalOpen}
         contentLabel={intl.formatMessage(intlMessages.ariaTitle)}
         data-test="connectionStatusModal"
       >
@@ -633,7 +497,7 @@ class ConnectionStatusComponent extends PureComponent {
               <Styled.ConnectionTabSelector selectedClassName="is-selected">
                 <span id="my-logs-tab">{intl.formatMessage(intlMessages.myLogs)}</span>
               </Styled.ConnectionTabSelector>
-              {Service.isModerator()
+              {amIModerator
                 && (
                   <Styled.ConnectionTabSelector selectedClassName="is-selected">
                     <span id="session-logs-tab">{intl.formatMessage(intlMessages.sessionLogs)}</span>
@@ -648,12 +512,12 @@ class ConnectionStatusComponent extends PureComponent {
               </div>
             </Styled.ConnectionTabPanel>
             <Styled.ConnectionTabPanel selectedClassName="is-selected">
-                <div>{this.renderConnections()}</div>
+              <ul>{this.renderConnections()}</ul>
             </Styled.ConnectionTabPanel>
-            {Service.isModerator()
+            {amIModerator
               && (
                 <Styled.ConnectionTabPanel selectedClassName="is-selected">
-                  <div>{this.renderConnections()}</div>
+                  <ul>{this.renderConnections()}</ul>
                 </Styled.ConnectionTabPanel>
               )
             }

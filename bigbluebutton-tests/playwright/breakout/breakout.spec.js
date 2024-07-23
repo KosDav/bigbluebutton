@@ -1,10 +1,10 @@
-const { test } = require('@playwright/test');
+const { test } = require('../fixtures');
 const { Create } = require('./create');
 const { Join } = require('./join');
 
-test.describe.parallel('Breakout', () => {
+test.describe.parallel('Breakout', { tag: '@ci' }, () => {
   test.describe.parallel('Creating', () => {
-    test('Create Breakout room @ci', async ({ browser, context, page }) => {
+    test('Create Breakout room', async ({ browser, context, page }) => {
       const create = new Create(browser, context);
       await create.initPages(page);
       await create.create();
@@ -43,7 +43,7 @@ test.describe.parallel('Breakout', () => {
 
   test.describe.parallel('After creating', () => {
     // https://docs.bigbluebutton.org/2.6/release-tests.html#moderators-creating-breakout-rooms-and-assiging-users-automated
-    test('Join Breakout room @ci', async ({ browser, context, page }) => {
+    test('Join Breakout room', async ({ browser, context, page }) => {
       const join = new Join(browser, context);
       await join.initPages(page);
       await join.create()
@@ -120,20 +120,25 @@ test.describe.parallel('Breakout', () => {
       await join.moveUserToOtherRoom();
     });
 
-    test('Export breakout room shared notes', async ({ browser, context, page }) => {
+    test('Export breakout room shared notes @flaky', async ({ browser, context, page }) => {
       const join = new Join(browser, context);
       await join.initPages(page);
-      await join.create(true); // capture breakout notes
+      await join.create(true);
       await join.exportBreakoutNotes();
     });
 
-    // temporarily skipped until the following issue gets resolved:
-    // https://github.com/bigbluebutton/bigbluebutton/issues/16368
-    test.skip('Export breakout room whiteboard annotations', async ({ browser, context, page }) => {
+    test('Export breakout room whiteboard annotations', async ({ browser, context, page }) => {
       const join = new Join(browser, context);
       await join.initPages(page);
-      await join.create(false, true); // capture breakout whiteboard
+      await join.create(false, true);
       await join.exportBreakoutWhiteboard();
+    });
+
+    test('User can choose a room', async ({ browser, context, page }) => {
+      const join = new Join(browser, context);
+      await join.initPages(page);
+      await join.createToAllowChooseOwnRoom();
+      await join.userCanChooseRoom();
     });
   });
 });

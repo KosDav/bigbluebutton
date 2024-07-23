@@ -1,10 +1,10 @@
 package org.bigbluebutton.core
 
 import java.io.{ PrintWriter, StringWriter }
-import akka.actor._
-import akka.actor.ActorLogging
-import akka.actor.SupervisorStrategy.Resume
-import akka.util.Timeout
+import org.apache.pekko.actor._
+import org.apache.pekko.actor.ActorLogging
+import org.apache.pekko.actor.SupervisorStrategy.Resume
+import org.apache.pekko.util.Timeout
 
 import scala.concurrent.duration._
 import org.bigbluebutton.core.bus._
@@ -13,7 +13,11 @@ import org.bigbluebutton.SystemConfiguration
 
 import java.util.concurrent.TimeUnit
 import org.bigbluebutton.common2.msgs._
+import org.bigbluebutton.core.db.{ DatabaseConnection, MeetingDAO }
+import org.bigbluebutton.core.domain.MeetingEndReason
+import org.bigbluebutton.core.models.Roles
 import org.bigbluebutton.core.running.RunningMeeting
+import org.bigbluebutton.core.util.ColorPicker
 import org.bigbluebutton.core2.RunningMeetings
 import org.bigbluebutton.core2.message.senders.MsgBuilder
 import org.bigbluebutton.service.HealthzService
@@ -42,6 +46,8 @@ class BigBlueButtonActor(
 
   private val meetings = new RunningMeetings
 
+  private var sessionTokens = new collection.immutable.HashMap[String, (String, String)] //sessionToken -> (meetingId, userId)
+
   override val supervisorStrategy = OneForOneStrategy(maxNrOfRetries = 10, withinTimeRange = 1 minute) {
     case e: Exception => {
       val sw: StringWriter = new StringWriter()
@@ -54,6 +60,10 @@ class BigBlueButtonActor(
 
   override def preStart() {
     bbbMsgBus.subscribe(self, meetingManagerChannel)
+    DatabaseConnection.initialize()
+
+    //Terminate all previous meetings, as they will not function following the akka-apps restart
+    MeetingDAO.setAllMeetingsEnded(MeetingEndReason.ENDED_DUE_TO_SERVICE_INTERRUPTION, "system")
   }
 
   override def postStop() {
@@ -64,21 +74,65 @@ class BigBlueButtonActor(
     // Internal messages
     case msg: DestroyMeetingInternalMsg => handleDestroyMeeting(msg)
 
+    //Api messages
+    case msg: GetUserApiMsg             => handleGetUserApiMsg(msg, sender)
+
     // 2x messages
     case msg: BbbCommonEnvCoreMsg       => handleBbbCommonEnvCoreMsg(msg)
     case _                              => // do nothing
   }
 
+  private def handleGetUserApiMsg(msg: GetUserApiMsg, actorRef: ActorRef): Unit = {
+    log.debug("RECEIVED GetUserApiMsg msg {}", msg)
+
+    sessionTokens.get(msg.sessionToken) match {
+      case Some(sessionTokenInfo) =>
+        RunningMeetings.findWithId(meetings, sessionTokenInfo._1) match {
+          case Some(m) =>
+            m.actorRef forward (msg)
+
+          case None =>
+            //The meeting is ended, it will return some data just to confirm the session was valid
+            //The client can request data after the meeting is ended
+            val userInfos = Map(
+              "returncode" -> "SUCCESS",
+              "sessionToken" -> msg.sessionToken,
+              "meetingID" -> sessionTokenInfo._1,
+              "internalUserID" -> sessionTokenInfo._2,
+              "externMeetingID" -> "",
+              "externUserID" -> "",
+              "online" -> false,
+              "authToken" -> "",
+              "role" -> Roles.VIEWER_ROLE,
+              "guest" -> "false",
+              "guestStatus" -> "ALLOWED",
+              "moderator" -> false,
+              "presenter" -> false,
+              "hideViewersCursor" -> false,
+              "hideViewersAnnotation" -> false,
+              "hideUserList" -> false,
+              "webcamsOnlyForModerator" -> false
+            )
+            actorRef ! ApiResponseSuccess("Meeting is ended!", UserInfosApiMsg(userInfos))
+        }
+      case None =>
+        actorRef ! ApiResponseFailure("Meeting not found!")
+    }
+  }
+
   private def handleBbbCommonEnvCoreMsg(msg: BbbCommonEnvCoreMsg): Unit = {
     msg.core match {
 
-      case m: CreateMeetingReqMsg         => handleCreateMeetingReqMsg(m)
-      case m: RegisterUserReqMsg          => handleRegisterUserReqMsg(m)
-      case m: GetAllMeetingsReqMsg        => handleGetAllMeetingsReqMsg(m)
-      case m: GetRunningMeetingsReqMsg    => handleGetRunningMeetingsReqMsg(m)
-      case m: CheckAlivePingSysMsg        => handleCheckAlivePingSysMsg(m)
-      case m: ValidateConnAuthTokenSysMsg => handleValidateConnAuthTokenSysMsg(m)
-      case _                              => log.warning("Cannot handle " + msg.envelope.name)
+      case m: CreateMeetingReqMsg                    => handleCreateMeetingReqMsg(m)
+      case m: RegisterUserReqMsg                     => handleRegisterUserReqMsg(m)
+      case m: GetAllMeetingsReqMsg                   => handleGetAllMeetingsReqMsg(m)
+      case m: GetRunningMeetingsReqMsg               => handleGetRunningMeetingsReqMsg(m)
+      case m: CheckAlivePingSysMsg                   => handleCheckAlivePingSysMsg(m)
+      case m: ValidateConnAuthTokenSysMsg            => handleValidateConnAuthTokenSysMsg(m)
+      case _: UserGraphqlConnectionEstablishedSysMsg => //Ignore
+      case _: UserGraphqlConnectionClosedSysMsg      => //Ignore
+      case _: CheckGraphqlMiddlewareAlivePongSysMsg  => //Ignore
+      case _                                         => log.warning("Cannot handle " + msg.envelope.name)
     }
   }
 
@@ -100,6 +154,10 @@ class BigBlueButtonActor(
       m <- RunningMeetings.findWithId(meetings, msg.header.meetingId)
     } yield {
       log.debug("FORWARDING Register user message")
+
+      //Store sessionTokens and associate them with their respective meetingId + userId owners
+      sessionTokens += (msg.body.sessionToken -> (msg.body.meetingId, msg.body.intUserId))
+
       m.actorRef forward (msg)
     }
   }
@@ -144,7 +202,7 @@ class BigBlueButtonActor(
   }
 
   private def handleGetAllMeetingsReqMsg(msg: GetAllMeetingsReqMsg): Unit = {
-    RunningMeetings.meetings(meetings).filter(_.props.systemProps.html5InstanceId == msg.body.html5InstanceId).foreach(m => {
+    RunningMeetings.meetings(meetings).foreach(m => {
       m.actorRef ! msg
     })
   }
@@ -183,6 +241,19 @@ class BigBlueButtonActor(
         // Stop the meeting actor.
         context.stop(m.actorRef)
       }
+
+      //Delay removal of session tokens and Graphql data once users might request some info after the meeting is ended
+      context.system.scheduler.scheduleOnce(Duration.create(60, TimeUnit.MINUTES)) {
+        log.debug("Removing Graphql data and session tokens. meetingID={}", msg.meetingId)
+
+        sessionTokens = sessionTokens.filter(sessionTokenInfo => sessionTokenInfo._2._1 != msg.meetingId)
+
+        //In Db, Removing the meeting is enough, all other tables has "ON DELETE CASCADE"
+        MeetingDAO.delete(msg.meetingId)
+      }
+
+      //Remove ColorPicker idx of the meeting
+      ColorPicker.reset(m.props.meetingProp.intId)
     }
   }
 

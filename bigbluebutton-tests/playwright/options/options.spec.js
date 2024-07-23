@@ -1,38 +1,37 @@
-const { test } = require('@playwright/test');
+const { test } = require('../fixtures');
+const { fullyParallel } = require('../playwright.config');
 const { Options } = require('./options');
+const { initializePages } = require('../core/helpers');
+const { encodeCustomParams } = require('../parameters/util');
+const { PARAMETER_HIDE_PRESENTATION_TOAST } = require('../core/constants');
 
-test.describe.parallel('Options', () => {
-  test('Open about modal', async ({ browser, page }) => {
-    const about = new Options(browser, page);
-    await about.init(true, true);
-    await about.openedAboutModal();
+const hidePresentationToast = encodeCustomParams(PARAMETER_HIDE_PRESENTATION_TOAST);
+
+test.describe('Options', () => {
+  const options = new Options();
+
+  test.describe.configure({ mode: fullyParallel ? 'parallel' : 'serial' });
+  test[fullyParallel ? 'beforeEach' : 'beforeAll'](async ({ browser }) => {
+    await initializePages(options, browser, { joinParameter: hidePresentationToast });
   });
 
-  test('Open Help Button', async ({ browser, page, context }) => {
-    const helpButton = new Options(browser, page);
-    await helpButton.init(true, true);
-    await helpButton.openHelp(context);
-  });
-});
-
-test.describe.parallel('Settings', () => {
-  // https://docs.bigbluebutton.org/2.6/release-tests.html#application-settings
-  test(`Locales`, async ({ browser, page }) => {
-    test.slow();
-    const language = new Options(browser, page);
-    await language.init(true, true);
-    await language.localesTest();
+  test('Open about modal', async () => {
+    await options.openedAboutModal();
   });
 
-  test('Dark mode', async ({ browser, page }) => {
-    const darkModeTest = new Options(browser, page);
-    await darkModeTest.init(true, true);
-    await darkModeTest.darkMode();
+  test('Open Help Button', async () => {
+    await options.openHelp();
   });
 
-  test('Font size', async ({ browser, page }) => {
-    const fontSize = new Options(browser, page);
-    await fontSize.init(true, true);
-    await fontSize.fontSizeTest();
+  test('Locales test', async () => {
+    await options.localesTest();
+  });
+
+  test('Dark mode', { tag: ['@ci', '@flaky'] }, async () => {
+    await options.darkMode();
+  });
+
+  test('Font size', { tag: ['@ci', '@flaky'] }, async () => {
+    await options.fontSizeTest();
   });
 });

@@ -8,11 +8,21 @@ keywords:
 - customization
 ---
 
-BigBlueButton has many configuration files that offer you opportunities to customize your installation. This document covers common customizations of BigBlueButton 2.2.
+BigBlueButton has many configuration files that offer you opportunities to customize your installation.
 
-## apply-conf.sh
+## General
 
-Whenever you upgrade a server to the latest version of BigBlueButton, either using the [manual upgrade steps](/administration/install#upgrading-from-bigbluebutton-22) or the [bbb-install.sh](https://github.com/bigbluebutton/bbb-install) script, if you have made custom changes to BigBlueButton's configuration files, the packaging scripts may overwrite these changes.
+### Preserving changes to configuration files
+
+BigBlueButton's components use various configuration files which are included with the installation packages. If you were to make a change to these configuration files, your changes would be lost when an updated version of the package is installed during upgrades. To prevent this loss of customizations, most components also accept overriding configuration files from `/etc/bigbluebutton`. That directory is not interfered with by BigBlueButton (except in cases when using the command `bbb-conf --setip` or `--setsecret` placing new values you specify). 
+
+For the full list of the configuration files and their overriding counterpart, see [Configuration Files](/administration/configuration-files#local-overrides-for-configuration-settings)
+
+### Preserving customizations using apply-conf.sh
+
+**Note that starting with BigBlueButton 2.6 we strongly recommend adding your custom settings to `/etc/bigbluebutton` instead. See [the list of override files](/administration/configuration-files#local-overrides-for-configuration-settings)**
+
+Whenever you upgrade a server to the latest version of BigBlueButton, either using the [manual upgrade steps](/administration/install#upgrading-from-bigbluebutton-26-or-27) or the [bbb-install.sh](https://github.com/bigbluebutton/bbb-install) script, if you have made custom changes to BigBlueButton's configuration files [that are deployed from packages], the packaging scripts may overwrite these changes.
 
 To make it easier to apply your configuration changes, you can create a BASH script at `/etc/bigbluebutton/bbb-conf/apply-config.sh` that contains commands to apply your changes. The `bbb-conf` script, which is run as part of the last steps in a manual upgrade steps or using `bbb-install.sh`, will detect `apply-config.sh` and invoke it just before starting all of BigBlueButton's components.
 
@@ -23,22 +33,18 @@ For example, if you create `/etc/bigbluebutton/bbb-conf/apply-config.sh` with th
 ```sh
 #!/bin/bash
 
-## Pull in the helper functions for configuring BigBlueButton
+# Pull in the helper functions for configuring BigBlueButton
 source /etc/bigbluebutton/bbb-conf/apply-lib.sh
 
 enableUFWRules
-
-echo " - Disable screen sharing"
-yq w -i $HTML5_CONFIG public.kurento.enableScreensharing false
-chown meteor:meteor $HTML5_CONFIG
 ```
 
 then when called by `bbb-conf`, the above `apply-conf.sh` script will
 
-- use the helper function `enableUFWRules` to [restrict access to specific ports](#restrict-access-to-specific-ports), and
-- set `enableScreensharing` to `false` in the HTML5 configuration file at `/usr/share/meteor/bundle/programs/server/assets/app/config/settings.yml`.
+- use the helper function `enableUFWRules` to restrict access to specific ports, and
 
-Notice that `apply-conf.sh` includes a helper script [apply-lib.sh](https://github.com/bigbluebutton/bigbluebutton/blob/master/bigbluebutton-config/bin/apply-lib.sh). This helper script contains some functions to make it easy to apply common configuratino changes, along with some helper variables, such as `HTML5_CONFIG`.
+Notice that `apply-conf.sh` includes a helper script [apply-lib.sh](https://github.com/bigbluebutton/bigbluebutton/blob/v3.0.x-release/bigbluebutton-config/bin/apply-lib.sh).
+This helper script contains some functions to make it easy to apply common configuration changes, along with some helper variables, such as `HTML5_CONFIG`.
 
 The contents of `apply-config.sh` are not owned by any package, so it will never be overwritten.
 
@@ -50,21 +56,19 @@ The contents of `apply-config.sh` are not owned by any package, so it will never
 
 When a meeting finishes, the BigBlueButton server [archives the meeting data](/development/recording#archive) (referred to as the "raw" data).
 
-Retaining the raw data lets you [rebuild](/development/recording#rebuild-a-recording) a recording if it was accidentally deleted by a user; however, the tradeoff is the storage of raw data will consume more disk space over time.
+Retaining the raw data lets you [rebuild](/development/recording#rebuild-a-recording) a recording if there was a processing issue, to enabled a new recording format, or if it was accidentally deleted by a user; however, the tradeoff is the storage of raw data will consume more disk space over time.
 
-By default, BigBlueButton server automatically remove the raw data for a recording after 14 days of its being published. To disable this, edit the BigBlueButton cron job, located at `/etc/cron.daily/bigbluebutton`, and comment the following line
-
-```bash
-remove_raw_of_published_recordings
-```
-
-The default duration (days)
+By default, BigBlueButton server automatically remove the raw data for a recording after 14 days of its being published. You can adjust this by editing the file `/etc/cron.daily/bigbluebutton`. Look for this line near the top of the file:
 
 ```bash
 published_days=14
 ```
 
-is defined near the top of the BigBlueButton cron job.
+And adjust it to the desired number of days. If you would instead like to completely disable the cleanup of raw recording data, comment out the following line, near the bottom of the file:
+
+```bash
+remove_raw_of_published_recordings
+```
 
 #### Delete recordings older than N days
 
@@ -168,29 +172,19 @@ This change will increase the processing time and storage size of recordings wit
 
 #### Always record every meeting
 
-By default, the BigBlueButton server will produce a recording when (1) the meeting has been created with `record=true` in the create API call and (2) a moderator has clicked the Start/Stop Record button (at least once) during the meeting.
+By default, the BigBlueButton server will produce a recording when both of the following are true:
+1. the meeting has been created with `record=true` in the create API call, and
+2. a moderator has clicked the Start/Stop Record button (at least once) during the meeting.
 
-However, you can configure a BigBlueButton server to record every meeting, edit `/etc/bigbluebutton/bbb-web.properties` and set
-
-```properties
-## Start recording when first user joins the meeting.
-## For backward compatibility with 0.81 where whole meeting
-## is recorded.
-autoStartRecording=false
-
-## Allow the user to start/stop recording.
-allowStartStopRecording=true
-```
-
-to
+However, you can configure a BigBlueButton server to record every meeting and disable the ability for a moderator to stop the recording. Edit `/etc/bigbluebutton/bbb-web.properties` and set the following properties:
 
 ```properties
-## Start recording when first user joins the meeting.
-## For backward compatibility with 0.81 where whole meeting
-## is recorded.
+# Start recording when first user joins the meeting.
+# For backward compatibility with 0.81 where whole meeting
+# is recorded.
 autoStartRecording=true
 
-## Allow the user to start/stop recording.
+# Allow the user to start/stop recording.
 allowStartStopRecording=false
 ```
 
@@ -300,6 +294,148 @@ Persistent=false
 
 and do `systemctl daemon-reload`. This file overrides the timing of when systemd runs `bbb-record-core.target`. In the above example, recordings will start processing between 21:00 and 03:59.
 
+#### Allow all recordings to be returned
+
+In 2.6.x a new configuration property, `allowFetchAllRecordings`, was added to `bigbluebutton.properties`. This property determines whether every recording on the server can be returned in a single response from a `getRecordings` call. By default this property is set to `true`. On a server with a large number of recordings an attempt to return every recording in a single response can cause a large amount of load on the server and therefore it is advised that this property be switched to `false`. When this is done any request to `getRecordings` that does not specify any recording or meeting IDs as well as no pagination parameters will return no recordings to prevent all recordings from being returned. 
+
+#### Increase the number of recording workers
+
+<!-- TODO remove when 12403 is resolved -->
+> **Warning**
+>
+> If the `defaultKeepEvents` or `meetingKeepEvents` setting in bbb-web is enabled, you must not increase the number of BigBlueButton recording workers. Doing so could result in data loss, as meeting events will not be correctly archived.
+> 
+> For more information, see [BigBlueButton issue #12503](https://github.com/bigbluebutton/bigbluebutton/issues/12503).
+
+Run `systemctl edit bbb-rap-resque-worker.service`, and insert the following into the editor, replacing the number with the desired number of recordings to process concurrently.
+
+```
+[Service]
+Environment=COUNT=3
+```
+
+Then restart the worker process: `systemctl restart bbb-rap-resque-worker.service`
+
+If you run `systemctl status bbb-rap-resque-worker.service` now, you will see that it has the desired number of workers ready to process recordings in parallel:
+
+```
+● bbb-rap-resque-worker.service - BigBlueButton resque worker for recordings
+   Loaded: loaded (/usr/lib/systemd/system/bbb-rap-resque-worker.service; disabled; vendor preset: enabled)
+  Drop-In: /etc/systemd/system/bbb-rap-resque-worker.service.d
+           └─override.conf
+   Active: active (running) since Sat 2021-01-09 12:19:22 UTC; 6s ago
+ Main PID: 23630 (sh)
+    Tasks: 15 (limit: 4915)
+   CGroup: /system.slice/bbb-rap-resque-worker.service
+      ├─23630 /bin/sh -c /usr/bin/rake -f ../Rakefile resque:workers >> /var/log/bigbluebutton/bbb-rap-worker.log
+      ├─23631 /usr/bin/ruby /usr/bin/rake -f ../Rakefile resque:workers
+      ├─23650 resque-2.0.0: Waiting for rap:archive,rap:publish,rap:process,rap:sanity,rap:captions
+      ├─23651 resque-2.0.0: Waiting for rap:archive,rap:publish,rap:process,rap:sanity,rap:captions
+      └─23652 resque-2.0.0: Waiting for rap:archive,rap:publish,rap:process,rap:sanity,rap:captions
+```
+
+#### Install additional recording processing formats
+
+In addition to the `presentation` format that is installed and enabled by default, there are several optional recording formats available for BigBlueButton 2.6:
+
+- `notes`: Makes the shared notes from the meeting available as a document.
+- `screenshare`: Generate a single video file from the screensharing and meeting audio.
+- `podcast`: Generate an audio-only recording.
+- `video`: Generate a recording containing the webcams, presentation area, and screensharing combined into a single video file.
+
+The processing scripts and playback support files for these recording formats can be installed from the packages named `bbb-playback-formatname` (e.g. `bbb-playback-video`)
+
+There is currently an issue where the recording formats are not automatically enabled when they are installed - see [#12241](https://github.com/bigbluebutton/bigbluebutton/issues/12241) for details.
+
+In order to enable the recording formats manually, you need to edit the file `/usr/local/bigbluebutton/core/scripts/bigbluebutton.yml`. Look for the section named `steps:`. In this section, the recording processing workflow is defined, including what recording processing steps are performed, and what order they need to be performed in.
+
+To enable a new recording format, you need to add a new step named `process:formatname` that runs after the step named captions, and a new step named `publish:formatname` that runs after `process:formatname`. You may have to convert some of the steps to list format.
+
+For example, here are the stock steps in BigBlueButton 2.6 with the `presentation` format enabled:
+
+```yml
+steps:
+  archive: 'sanity'
+  sanity: 'captions'
+  captions: 'process:presentation'
+  'process:presentation': 'publish:presentation'
+```
+
+If you additionally enable the `video` recording format, the steps will have to be changed to look like this:
+
+```yml
+steps:
+  archive: 'sanity'
+  sanity: 'captions'
+  captions:
+    - 'process:presentation'
+    - 'process:video'
+  'process:presentation': 'publish:presentation'
+  'process:video': 'publish:video'
+```
+
+This pattern can be repeated for additional recording formats. Note that it's very important to put the step names containing a colon (`:`) in quotes.
+
+After you edit the configuration file, you must restart the recording processing queue: `systemctl restart bbb-rap-resque-worker.service` in order to pick up the changes.
+
+The following script will enable the video recording format a BigBlueButton 2.6+ server.
+
+```
+!/bin/bash
+mkdir -p /etc/bigbluebutton/recording
+cat > /etc/bigbluebutton/recording/recording.yml << REC
+steps:
+  archive: "sanity"
+  sanity: "captions"
+  captions:
+    - process:presentation
+    - process:video
+  process:presentation: publish:presentation
+  process:video: publish:video
+REC
+if ! dpkg -l | grep -q bbb-playback-video; then
+  apt install -y bbb-playback-video
+  systemctl restart bbb-rap-resque-worker.service
+fi
+```
+
+#### Enable generating mp4 (H.264) video output
+
+By default, BigBlueButton generates recording videos as `.webm` files using the VP9 video codec. These are supported in most desktop web browsers, but might not work on iOS mobile devices. You can additionally enable the H.264 video codec in some recording formats (Keep in mind that the following `.yml` files mentioned ahead only exist when the respective format package is installed):
+
+**`video`**
+
+Edit the file `/usr/local/bigbluebutton/core/scripts/video.yml` and uncomment the lines under the `formats:` label for the mimetype `video/mp4`.
+
+<!-- TODO: The default for the video recording format is currently mp4; this needs to be updated with the correct steps -->
+
+The encoding options can be adjusted to speed up encoding or increase quality of video generation as desired.
+
+**`presentation`**
+
+Edit the file `/usr/local/bigbluebutton/core/scripts/presentation.yml` and uncomment the entry for `mp4`:
+
+```yml
+video_formats:
+  - webm
+  - mp4
+```
+
+**`screenshare`**
+
+Edit the file `/usr/local/bigbluebutton/core/scripts/screenshare.yml` and uncomment the lines under the `:formats:` label for the mime type `video/mp4`:
+
+```yml
+  - :mimetype: 'video/mp4; codecs="avc1.640028, mp4a.40.2"'
+    :extension: mp4
+    :parameters:
+      - [ '-c:v', 'libx264', '-crf', '21', '-preset', 'medium', '-profile:v', 'high', '-level', '40', '-g', '240',
+          '-c:a', 'aac', '-b:a', '96K',
+          '-threads', '2', '-f', 'mp4', '-movflags', 'faststart' ]
+```
+
+The encoding options can be adjusted to speed up encoding or increase quality of video generation as desired.
+
 ### Video
 
 #### Reduce bandwidth from webcams
@@ -328,117 +464,82 @@ cameraProfiles:
 
 The settings for `bitrate` are in kbits/sec (i.e. 100 kbits/sec). After your modify the values, save the file, restart your BigBlueButton server `sudo bbb-conf --restart` to have the settings take effect. The lowest setting allowed for WebRTC is 30 Kbits/sec.
 
-If you have sessions that like to share lots of webcams, such as ten or more, then then setting the `bitrate` for `low` to 50 and `medium` to 100 will help reduce the overall bandwidth on the server. When many webcams are shared, the size of the webcams get so small that the reduction in `bitrate` will not be noticable during the live sessions.
+If you have sessions that like to share lots of webcams, such as ten or more, then then setting the `bitrate` for `low` to 50 and `medium` to 100 will help reduce the overall bandwidth on the server. When many webcams are shared, the size of the webcams get so small that the reduction in `bitrate` will not be noticeable during the live sessions.
 
 #### Disable webcams
 
-You can disable webcams by setting `enableVideo` to `false` in the `settings.yml` file for the HTML5 client.
+You can disable webcams by setting `enableVideo` to `false` in the `/etc/bigbluebutton/bbb-html5.yml` file for the HTML5 client.
 
-To do this automatically between package upgrades and restarts of BigBlueButton, add the following lines to [apply-conf.sh](/administration/customize#apply-confsh).
-
-```bash
-echo " - Disable webcams"
-yq w -i $HTML5_CONFIG public.kurento.enableVideo false
-chown meteor:meteor $HTML5_CONFIG
-```
+`yq e -i '.public.kurento.enableVideo = false' /etc/bigbluebutton/bbb-html5.yml`
 
 and run `bbb-conf --restart`
 
 #### Disable screen sharing
 
-You can disable screen sharing by setting `enableScreensharing` to `false` in the `settings.yml` file for the HTML5 client.
+You can disable screen sharing by setting `enableScreensharing` to `false` in the `/etc/bigbluebutton/bbb-html5.yml` file for the HTML5 client.
 
-To do this automatically between package upgrades and restarts of BigBlueButton, add the following lines to [apply-conf.sh](/administration/customize#apply-confsh).
-
-```bash
-echo " - Disable screen sharing"
-yq w -i $HTML5_CONFIG public.kurento.enableScreensharing false
-chown meteor:meteor $HTML5_CONFIG
-```
+`yq e -i '.public.kurento.enableScreensharing = false' /etc/bigbluebutton/bbb-html5.yml`
 
 #### Reduce bandwidth for webcams
 
 If you expect users to share many webcams, you can [reduce bandwidth for webcams](#reduce-bandwidth-from-webcams).
 
-To do this automatically between package upgrades and restarts of BigBlueButton, add the following lines to [apply-conf.sh](/administration/customize#apply-confsh).
-
 ```bash
 echo "  - Setting camera defaults"
-yq w -i $HTML5_CONFIG 'public.kurento.cameraProfiles.(id==low).bitrate' 50
-yq w -i $HTML5_CONFIG 'public.kurento.cameraProfiles.(id==medium).bitrate' 100
-yq w -i $HTML5_CONFIG 'public.kurento.cameraProfiles.(id==high).bitrate' 200
-yq w -i $HTML5_CONFIG 'public.kurento.cameraProfiles.(id==hd).bitrate' 300
+yq e -i '.public.kurento.cameraProfiles.(id==low).bitrate = 50' /etc/bigbluebutton/bbb-html5.yml 
+yq e -i '.public.kurento.cameraProfiles.(id==medium).bitrate = 100' /etc/bigbluebutton/bbb-html5.yml
+yq e -i '.public.kurento.cameraProfiles.(id==high).bitrate = 200' /etc/bigbluebutton/bbb-html5.yml
+yq e -i '.public.kurento.cameraProfiles.(id==hd).bitrate = 300' /etc/bigbluebutton/bbb-html5.yml
 
-yq w -i $HTML5_CONFIG 'public.kurento.cameraProfiles.(id==low).default' true
-yq w -i $HTML5_CONFIG 'public.kurento.cameraProfiles.(id==medium).default' false
-yq w -i $HTML5_CONFIG 'public.kurento.cameraProfiles.(id==high).default' false
-yq w -i $HTML5_CONFIG 'public.kurento.cameraProfiles.(id==hd).default' false
-chown meteor:meteor $HTML5_CONFIG
+yq e -i '.public.kurento.cameraProfiles.(id==low).default = true' /etc/bigbluebutton/bbb-html5.yml
+yq e -i '.public.kurento.cameraProfiles.(id==medium).default = false' /etc/bigbluebutton/bbb-html5.yml
+yq e -i '.public.kurento.cameraProfiles.(id==high).default = false' /etc/bigbluebutton/bbb-html5.yml
+yq e -i '.public.kurento.cameraProfiles.(id==hd).default = false' /etc/bigbluebutton/bbb-html5.yml
 ```
 
-#### Run three parallel Kurento media servers
+#### Change screen sharing quality parameters
 
-[ Available since BigBluebutton 2.2.24+ ]
+Screen sharing quality can be tweaked to either improve quality or reduce bandwidth usage.
+There are different configurations for live meetings and recordings and they need to be changed independently from each other.
 
-Kurento media server handles three different types of media streams: listen only, webcams, and screen share.
+For **recordings**, the following parameters can be changed (presentation format):
+  - `/usr/local/bigbluebutton/core/scripts/presentation.yml`: `deskshare_output_width` (default: 1280)
+  - `/usr/local/bigbluebutton/core/scripts/presentation.yml`: `deskshare_output_height` (default: 720)
+  - `/usr/local/bigbluebutton/core/scripts/presentation.yml`: `deskshare_output_framerate` (default: 5)
 
-Running three parallel Kurento media servers (KMS) -- one dedicated to each type of media stream -- should increase the stability of media handling as the load for starting/stopping media streams spreads over three separate KMS processes. Also, it should increase the reliability of media handling as a crash (and automatic restart) by one KMS will not affect the two.
+As an example, suppose you want to increase the output resolution and framerate of the recorded screen share media to match a 1080p/15 FPS stream. The following changes would be necessary:
+  -  `$ yq w -i /usr/local/bigbluebutton/core/scripts/presentation.yml deskshare_output_width 1920`
+  -  `$ yq w -i /usr/local/bigbluebutton/core/scripts/presentation.yml deskshare_output_height 1080`
+  -  `$ yq w -i /usr/local/bigbluebutton/core/scripts/presentation.yml deskshare_output_framerate 15`
 
-To configure your BigBlueButton server to run three KMS processes, add the following line to [apply-conf.sh](/administration/customize#apply-confsh)
+For **live meetings**, the following parameters can be changed:
+  - `/etc/bigbluebutton/bbb-html5.yml`: `public.kurento.screenshare.bitrate`
+  - `/etc/bigbluebutton/bbb-html5.yml`: `public.kurento.screenshare.constraints`
 
-```sh
-enableMultipleKurentos
+The bitrate is specified in kbps and represents screen sharing's maximum bandwidth usage. Setting it to a higher value *may* improve quality but also increase bandwidth usage, while setting it to a lower value *may* reduce quality but will reduce average bandwidth usage.
+The constraints are specified as an YAML object with the same semantics as the [MediaTrackConstraints](https://developer.mozilla.org/en-US/docs/Web/API/MediaTrackConstraints) from the WebRTC specification. We recommend checking the aforementioned MDN link as well as the [Media Capture and Streams API spec](https://www.w3.org/TR/mediacapture-streams) for an extensive list of constraints.
+To set new screen sharing constraints, translate the JSON constraints object into an YAML format object and put it into `public.kurento.screenshare.constraints`. Restart bbb-html5 afterwards.
+As an example, suppose you want to set the maximum screen sharing resolution to 1080p, alter the maximum bitrate to 2000 kbps and set a 10 FPS target. The following would need to be added to `etc/bigbluebutton/bbb-html5.yml`:
+```yaml
+public:
+  kurento:
+    screenshare:
+      bitrate: 2000
+      constraints:
+        audio: true
+        video:
+          width:
+            max: 1920
+          height:
+            max: 1080
+          frameRate:
+            ideal: 10
+            max: 10
 ```
-
-and run `sudo bbb-conf --restart`, you should see
-
-```
-  - Configuring three Kurento Media Servers: one for listen only, webcam, and screeshare
-Generating a 2048 bit RSA private key
-....................+++
-......+++
-writing new private key to '/tmp/dtls-srtp-key.pem'
------
-Created symlink from /etc/systemd/system/kurento-media-server.service.wants/kurento-media-server-8888.service to /usr/lib/systemd/system/kurento-media-server-8888.service.
-Created symlink from /etc/systemd/system/kurento-media-server.service.wants/kurento-media-server-8889.service to /usr/lib/systemd/system/kurento-media-server-8889.service.
-Created symlink from /etc/systemd/system/kurento-media-server.service.wants/kurento-media-server-8890.service to /usr/lib/systemd/system/kurento-media-server-8890.service.
-```
-
-After BigBlueButton finishes restarting, you should see three KMS processes running using the `netstat -antp | grep kur` command.
-
-```
-## netstat -antp | grep kur
-tcp6       0      0 :::8888                 :::*                    LISTEN      5929/kurento-media-
-tcp6       0      0 :::8889                 :::*                    LISTEN      5943/kurento-media-
-tcp6       0      0 :::8890                 :::*                    LISTEN      5956/kurento-media-
-tcp6       0      0 127.0.0.1:8888          127.0.0.1:49132         ESTABLISHED 5929/kurento-media-
-tcp6       0      0 127.0.0.1:8890          127.0.0.1:55540         ESTABLISHED 5956/kurento-media-
-tcp6       0      0 127.0.0.1:8889          127.0.0.1:41000         ESTABLISHED 5943/kurento-media-
-```
-
-Each process has its own log file (distinguished by its process ID).
-
-```
-## ls -alt /var/log/kurento-media-server/
-total 92
--rw-rw-r--  1 kurento kurento 11965 Sep 13 17:10 2020-09-13T170908.00000.pid5929.log
--rw-rw-r--  1 kurento kurento 10823 Sep 13 17:10 2020-09-13T170908.00000.pid5943.log
--rw-rw-r--  1 kurento kurento 10823 Sep 13 17:10 2020-09-13T170908.00000.pid5956.log
-```
-
-Now, if you now join a session and choose listen only (which causes Kurento setup a single listen only stream to FreeSWITCH), share your webcam, or share your screen, you'll see updates occuring independently to each of the above log files as each KMS process handles your request.
-
-To revert back to running a single KMS server (which handles all three meida streams), change the above line in `/etc/bigbluebutton/bbb-conf/apply-config.sh` to
-
-```sh
-disableMultipleKurentos
-```
-
-and run `sudo bbb-conf --restart` again.
 
 #### Limit overall media streams
 
-On a typical BigBlueButton server Kurento can handle about 1000 media streams. A media stream is created when a user broadcasts or receives a webcam or screen share video, or when a user joins audio listening only. If your server will be using webcams, you can set limits per user, per room, and an overall limit per server in `/usr/local/bigbluebutton/bbb-webrtc-sfu/config/default.yml`. The default is no limit.
+On any setup for BigBlueButton server there is a cap for how many media streams can be shared. A media stream is created when a user broadcasts or receives a webcam or screen share video, or when a user joins audio listening only. If your server will be using webcams, you can set limits per user, per room, and an overall limit per server in `/usr/local/bigbluebutton/bbb-webrtc-sfu/config/default.yml`. The default is no limit.
 
 ```
 mediaThresholds:
@@ -460,11 +561,9 @@ On a BigBlueButton 2.3 (or later) server, you can place the above in `/etc/bigbl
 
 If any of these thresholds are reached, then a user will receive a "Media resources not available (2002)" error when sharing webcams.
 
-Thus, we recommend you [enable multiple Kurento](/administration/customize#run-three-parallel-kurento-media-servers) servers, thereby having one Kurento server for webcams, one for screen share, and one for listen only streams. The settings apply to each Kurento server, so in the above example each Kurento server would have a maximum of 1000 media streams.
-
 BigBlueButton will dynamically reduce the number of webcams in a meeting as the meeting grows larger. These are set in `/usr/share/meteor/bundle/programs/server/assets/app/config/settings.yml`, but you can override them by placing them in `/etc/bigbluebutton/bbb-html5.yml`.
 
-For example, the follwing `/etc/bigbluebutton/bbb-html5.yml` file would ensure that no single meeting will have more than 300 streams. For example, in a meeting with 30 users, the moderator will see 25 webcams and the viewers 6 webcams. This gives 25 + 29 _ 6 = 196 webcam streams. If the meeting grows to 100 users, the moderator will see 8 webcams and viewers will see 2 webcams. This gives 8 + 99 _ 2 = 206 webcam streams.
+For example, the following `/etc/bigbluebutton/bbb-html5.yml` file would ensure that no single meeting will have more than 300 streams. For example, in a meeting with 30 users, the moderator will see 25 webcams and the viewers 6 webcams. This gives 25 + 29 _ 6 = 196 webcam streams. If the meeting grows to 100 users, the moderator will see 8 webcams and viewers will see 2 webcams. This gives 8 + 99 _ 2 = 206 webcam streams.
 
 ```
 public:
@@ -523,15 +622,15 @@ HERE
 
 Starting from version 2.4 BigBlueButton offers virtual background for webcams.
 To use your own background images copy them into the directory
-`/usr/share/meteor/bundle/programs/web.browser/app/resources/img/virtual-backgrounds`.
+`/usr/share/meteor/bundle/programs/web.browser/app/resources/images/virtual-backgrounds`.
 For each image copy a thumbnail of the image of 50x50 pixels size into
-`/usr/share/meteor/bundle/programs/web.browser/app/resources/img/virtual-backgrounds/thumbnails`.
+`/usr/share/meteor/bundle/programs/web.browser/app/resources/images/virtual-backgrounds/thumbnails`.
 
 To generate thumbnails you can use the following shell snippet:
 
 ```bash
 #!/bin/bash
-FULL="/usr/share/meteor/bundle/programs/web.browser/app/resources/img/virtual-backgrounds"
+FULL="/usr/share/meteor/bundle/programs/web.browser/app/resources/images/virtual-backgrounds"
 THUMB="${FULL}/thumbnails"
 
 cd "$FULL"
@@ -562,7 +661,7 @@ package.
 If you want to have all users join muted, you can add an overwrite in `/etc/bigbluebutton/bbb-web.properties` and set this as a server-wide configuration.
 
 ```properties
-## Mute the meeting on start
+# Mute the meeting on start
 muteOnStart=false
 ```
 
@@ -685,7 +784,7 @@ To create the dialplan, use the XML below and save it to `/opt/freeswitch/conf/d
    <action application="start_dtmf" />
    <action application="answer"/>
    <action application="sleep" data="1000"/>
-   <action application="play_and_get_digits" data="5 7 3 30000 # conference/conf-pin.wav ivr/ivr-that_was_an_invalid_entry.wav pin \d+"/>
+   <action application="play_and_get_digits" data="9 9 3 30000 # conference/conf-pin.wav ivr/ivr-that_was_an_invalid_entry.wav pin \d+"/>
 
    <!-- Uncomment the following block if you want to mask the phone number in the list of participants. -->
    <!-- Instead of `01711233121` it will then show `xxx-xxx-3121`. -->
@@ -708,7 +807,7 @@ To create the dialplan, use the XML below and save it to `/opt/freeswitch/conf/d
  <condition field="${pin}" expression="^\d{5}$">
    <action application="answer"/>
    <action application="sleep" data="1000"/>
-   <action application="play_and_get_digits" data="5 7 3 30000 # conference/conf-bad-pin.wav ivr/ivr-that_was_an_invalid_entry.wav pin \d+"/>
+   <action application="play_and_get_digits" data="9 9 3 30000 # conference/conf-bad-pin.wav ivr/ivr-that_was_an_invalid_entry.wav pin \d+"/>
    <action application="transfer" data="SEND_TO_CONFERENCE XML public"/>
  </condition>
 </extension>
@@ -732,14 +831,14 @@ To always show users the phone number along with the 5-digit PIN number within B
 
 ```properties
 #----------------------------------------------------
-## Default dial access number
+# Default dial access number
 defaultDialAccessNumber=613-555-1234
 ```
 
 and set `defaultWelcomeMessageFooter` to
 
 ```properties
-defaultWelcomeMessageFooter=<br/><br/>To join this meeting by phone, dial:<br/>  %%DIALNUM%%<br/>Then enter %%CONFNUM%%# as the conference PIN number.
+defaultWelcomeMessageFooter=<br><br>To join this meeting by phone, dial:<br>  %%DIALNUM%%<br>Then enter %%CONFNUM%%# as the conference PIN number.
 ```
 
 Save `/etc/bigbluebutton/bbb-web.properties` and restart BigBlueButton again. Each user that joins a session will see a message in the chat similar to.
@@ -782,12 +881,12 @@ $ sudo bbb-conf --restart
 
 #### Change the default presentation
 
-When a new meeting starts, BigBlueButton displays a default presentation. The file for the default presentation is located in `/var/www/bigbluebutton-default/default.pdf`. You can replace the contents of this file with your presentation. Whenever a meeting is created, BigBlueButton will automatically load, convert, and display this presentation for all users.
+When a new meeting starts, BigBlueButton displays a default presentation. The file for the default presentation is located in `/var/www/bigbluebutton-default/assets/default.pdf`. You can replace the contents of this file with your presentation. Whenever a meeting is created, BigBlueButton will automatically load, convert, and display this presentation for all users.
 
 Alternatively, you can change the global default by adding an overwriting rule in `/etc/bigbluebutton/bbb-web.properties` specifying the URL for `beans.presentationService.defaultUploadedPresentation`.
 
 ```properties
-## Default Uploaded presentation file
+# Default Uploaded presentation file
 beans.presentationService.defaultUploadedPresentation=${bigbluebutton.web.serverURL}/default.pdf
 ```
 
@@ -801,7 +900,7 @@ BigBlueButton, by default, restricts uploads to 200 pages. To increase this valu
 
 ```properties
 #----------------------------------------------------
-## Maximum number of pages allowed for an uploaded presentation (default 200).
+# Maximum number of pages allowed for an uploaded presentation (default 200).
 maxNumPages=200
 ```
 
@@ -836,7 +935,7 @@ The first step is to change the size restriction in nginx. Edit `/etc/bigbluebut
 Next change the restriction in bbb-web. Add an overwrite rule in `/etc/bigbluebutton/bbb-web.properties` and set the value `maxFileSizeUpload`.
 
 ```properties
-## Maximum file size for an uploaded presentation (default 30MB).
+# Maximum file size for an uploaded presentation (default 30MB).
 maxFileSizeUpload=30000000
 ```
 
@@ -861,6 +960,22 @@ Then copy the font (.ttf) to `/usr/share/fonts/`
 
 That's all! The font will be available on next presentations.
 
+
+#### Change the limit of 300 annotations per page
+
+In BigBlueButton 2.6 we introduced a cap for how many annotations can be added to a single whiteboard (slide). The default value is set to 300. The reason for this cap is that when a large number of annotations was added, it was often times done in the case of multi user whiteboard being enabled and a student trying to be funny. This had a negative effect on other participants in the session, specifically on limited CPU devices. In almost all cases we observed during the testing phase of BigBlueButton 2.6 this cap was sufficient for the normal run of classes. In very rare instances normal use of the whiteboard led to hitting the cap.
+
+In order to change the value (on per-server basis) to, say, 500 annotations in your deployment, add the following to `/etc/bigbluebutton/bbb-html5.yml`
+
+```
+public:
+  whiteboard:
+    maxNumberOfAnnotations: 500
+```
+
+and restart BigBlueButton via `sudo bbb-conf --restart`
+
+
 ### Frontends
 
 #### Remove the API demos
@@ -876,7 +991,7 @@ $ sudo apt-get purge bbb-demo
 The default HTML landing page is located in
 
 ```bash
-/var/www/bigbluebutton-default/index.html
+/var/www/bigbluebutton-default/assets/index.html
 ```
 
 Change this page to create your own landing page (and keep a back-up copy of it as it will be overwritten during package updates to `bbb-conf`).
@@ -885,9 +1000,9 @@ Change this page to create your own landing page (and keep a back-up copy of it 
 
 BigBlueButton comes with Greenlight, a front-end application written in Ruby on Rails that makes it easy for users to create meetings, invite others, start meetings, and manage recordings.
 
-![greenlight-start](/img/greenlight/room.png)
+![greenlight-start](/img/greenlight/v2/room.png)
 
-For more information see [Installing Greenlight](/greenlight/install).
+For more information see [Installing Greenlight](/greenlight/v3/install).
 
 ### Networking
 
@@ -897,7 +1012,7 @@ Configuring IP firewalling is _essential for securing your installation_. By def
 
 If your server is behind a firewall already -- such as running within your company or on an EC2 instance behind a Amazon Security Group -- and the firewall is enforcing the above restrictions, you don't need a second firewall and can skip this section.
 
-BigBlueButton comes with a [UFW](https://launchpad.net/ufw) based ruleset. It it can be applied on restart (c.f. [Automatically apply configuration changes on restart](#automatically-apply-configuration-changes-on-restart)) and restricts access only to the following needed ports:
+BigBlueButton comes with a [UFW](https://launchpad.net/ufw) based ruleset. It it can be applied on restart and restricts access only to the following needed ports:
 
 - TCP/IP port 22 for SSH
 - TCP/IP port 80 for HTTP
@@ -912,7 +1027,9 @@ tcp        0      0 0.0.0.0:22              0.0.0.0:*               LISTEN      
 tcp6       0      0 :::22                   :::*                    LISTEN      1739/sshd
 ```
 
-To restrict external access minimal needed ports for BigBlueButton (with [HTML5 client set as default](#make-the-html5-client-default)). BigBlueButton supplies a helper function that you can call in `/etc/bigbluebutton/bbb-conf/apply-conf.sh` to setup a minimal firewall (see [Setup Firewall](#setup-firewall).
+To restrict external access minimal needed ports for BigBlueButton.
+BigBlueButton supplies a helper function that you can call in `/etc/bigbluebutton/bbb-conf/apply-conf.sh`
+to setup a minimal firewall (see [Setup Firewall](#setup-firewall)).
 
 You can also do it manually with the following commands
 
@@ -989,7 +1106,7 @@ mediasoup:
 
 #### Apply custom settings for TURN server
 
-If always want a specific TURN server configuration, the following to [apply-config.sh](#apply-confsh) and modify `aaa.bbb.ccc.ddd` and `secret` with your values.
+If always want a specific TURN server configuration, the following to [apply-config.sh](#preserving-customizations-using-apply-confsh) and modify `aaa.bbb.ccc.ddd` and `secret` with your values.
 
 ```bash
 echo "  - Update TURN server configuration turn-stun-servers.xml"
@@ -1043,23 +1160,48 @@ The final welcome message shown to the user (as blue text in the Chat window) is
 
 The welcome message is fixed for the duration of a meeting. If you want to see the effect of changing the `welcome` parameter, you must [end](/development/api#end) the current meeting or wait until the BigBlueButton server removes it from memory (which occurs about two minutes after the last person has left). You can overwrite these values in file `/etc/bigbluebutton/bbb-web.properties`, just remember to restart BigBlueButton with `sudo bbb-conf --restart` for the new values to take effect.
 
-#### Change the default locale
+#### Modify localization for the client (override with the latest locale)
 
-XXX - Needs updating
+A common use case is to modify a particular string from the locales or to include newer localizations from upstream.
+For example, if you would like to replace `de.json` with the version from a specific branch/tag of the repository, you could do the following:
 
-By default, the BigBlueButton client should detect the browser's locale and use that default language accordingly. The default language is English, but you can change that by editing `bigbluebutton/client/BigBlueButton.html` and change the value
-
-```javascript
-localeChain = 'en_US';
+```bash
+cd /usr/share/meteor/bundle/programs/web.browser/app/locales/
+mv de.json /tmp/de.json.old
+wget https://raw.githubusercontent.com/bigbluebutton/bigbluebutton/v3.0.x-release/bigbluebutton-html5/public/locales/de.json
+cd /usr/share/meteor/bundle/programs/web.browser.legacy/app/locales/
+rm de.json
+wget https://raw.githubusercontent.com/bigbluebutton/bigbluebutton/v3.0.x-release/bigbluebutton-html5/public/locales/de.json
+bbb-conf --restart
 ```
 
-You can see the list of languages installed with BigBlueButton in the directory `/usr/share/meteor/bundle/programs/server/assets/app/locales`.
+Start a new meeting on the server, switch to German localization in Settings, **clear the cache** if needed -- frequently locales are cached.
+
+Please use caution when replacing/editing locales. If you followed the steps above you should have a backup copy of `de.json` (with ".old" appended) in `/tmp` in case you need to revert.
+Note that the json files across BigBlueButton versions are not always interchangeable. The workflow described above is only really meant for cases like
+ - I would like to tweak a translation for my own use
+ - I would like to adopt a change from upstream without having to wait for the official release in a few days
+ - This is part of my customization setup and I know what I need to test. I also know how to recover if needed
+
 
 #### Change favicon
 
-To change the favicon, overwrite the file `/var/www/bigbluebutton-default/favicon.ico`.
+First method:
+
+To change the favicon, overwrite the file `/var/www/bigbluebutton-default/assets/favicon.ico`.
 
 You'll need to update file each time the `bbb-config` package updates.
+
+Second method:
+
+Create a custom directory under `/var/www/bigbluebutton-default/` like `/var/www/bigbluebutton-default/site` and copy your favicon.ico into this directory. Add a new file `favicon.nginx` to `/etc/bigbluebutton/nginx` and add the following lines:
+
+```
+location = /favicon.ico {
+    alias /var/www/bigbluebutton-default/site/favicon.ico;
+```
+
+After a restart of nginx, your customized favicon.ico will be delivered. This change will affect BigBlueButton and Greenlight and will persist during updates.
 
 #### Change title in the HTML5 client
 
@@ -1078,7 +1220,7 @@ You'll need to update this entry each time the package `bbb-html5` updates. The 
 
 ```bash
 $ TARGET=/usr/share/meteor/bundle/programs/server/assets/app/config/settings.yml
-$ yq w -i $TARGET public.app.clientTitle "New Title"
+$ yq e -i ".public.app.clientTitle = \"New Title\"" $TARGET
 $ chown meteor:meteor $TARGET
 ```
 
@@ -1087,7 +1229,7 @@ $ chown meteor:meteor $TARGET
 To enable lock settings for `Share webcam` by default (viewers are unable to share their webcam), add the following to `/etc/bigbluebutton/bbb-web.properties`.
 
 ```properties
-## Prevent viewers from sharing webcams
+# Prevent viewers from sharing webcams
 lockSettingsDisableCam=true
 ```
 
@@ -1095,20 +1237,18 @@ After restart, if you open the lock settings you'll see `Share webcam` lock enab
 
 <p align="center">
   <img src="/img/html5-lock-webcam.png"/>
-</p><br/>
+</p>
 
 #### Change the default path for HTML5 client
 
 The default URL path for the client is `/html5client`, and it can be changed to match your preferences.
 
-Edit nginx configuration file (`/etc/bigbluebutton/nginx/bbb-html5.nginx`), replacing all instances of `/html5client` with the new path;
+Edit nginx configuration file (`/usr/share/bigbluebutton/nginx/bbb-html5.nginx`), replacing all instances of `/html5client` with the new path;
 
 Do the same in `/usr/share/bbb-web/WEB-INF/classes/bigbluebutton.properties` in the following lines:
 
 ```
 defaultHTML5ClientUrl=${bigbluebutton.web.serverURL}/html5client/join
-
-defaultGuestWaitURL=${bigbluebutton.web.serverURL}/html5client/guestWait
 ```
 
 In configuration file for the HTML5 client, located in `/usr/share/meteor/bundle/programs/server/assets/app/config/settings.yml`, change the entry for `public.app.basename`:
@@ -1126,6 +1266,52 @@ Finally, run the following command to reload configuration:
 
 `sudo service nginx reload && sudo bbb-conf --restart`
 
+#### Enable live captions
+
+BigBlueButton has the ability to use Chrome's built-in speech-to-text API to give users the option to have their audio live captioned for other users in the session.  When live captions are enabled on the server, a user can choose their language from the drop-down list when joining audio.
+
+<p align="center">
+  <img src="/img/26-auto-transcription.png"/>
+</p>
+
+These captions will automatically appear in the recordings.  To enable live captions, edit `/etc/bigbluebutton/bbb-html5.yml` and add the following
+
+```
+public:
+  app:
+    # You may have other setting itms here
+    audioCaptions:
+      enabled: true
+```
+
+Restart BigBlueButton with `sudo bbb-conf --restart` and you should now see the options for live captions when joining audio.
+
+### Configuration of gladia.io
+
+To use gladia.io for automatic speech-to-text transcriptions, you first need to obtain an API key from [gladia.io](https://www.gladia.io).  You can sign up for free credentials to test the integration.
+
+Next, you must be using BigBlueButton 2.7.4+ (pass `-v focal-270`) or BigBlueButton 3.0.0-alpha.7+ (pass `-v jammy-300`) or later on a BigBlueButton server with a public IP and hostname.  
+
+Once you have BigBlueButton installed, run `sudo apt install bbb-transcription-controller` to install BigBlueButton's transcription service which supports gladia.io.
+
+Next, run `sudo bbb-conf --setip <hostname>` where \<hostname\> is the external hostname of the server (same as was passed to bbb-install.sh). This will update the bbb-transcription-controller configuration.
+
+Next, to enable gladia.io, run the following two commands
+
+```
+sudo yq e -i '.public.app.audioCaptions.enabled = true' /etc/bigbluebutton/bbb-html5.yml
+sudo yq e -i '.public.app.audioCaptions.provider = "gladia"' /etc/bigbluebutton/bbb-html5.yml
+```
+
+Next, set the gladia.io API key using the command below, replacing \<gladia_api_key\> with a glada.io API key obtained above.
+
+```
+sudo yq e -i '.gladia.startMessage = "{\"x_gladia_key\": \"<gladia-api-key>\", \"sample_rate\": 0, \"bit_depth\": 16, \"model_type\": \"fast\", \"endpointing\": 10 }"' /usr/local/bigbluebutton/bbb-transcription-controller/config/default.yml
+```
+
+Restart the BigBlueButton server with `bbb-conf --restart`.  You will now be able to select a speech-to-text option when joining audio (including auto translate).  When one or more users have selected the option, a CC button will appear at the bottom and a Transcript panel will also be available.
+
+
 ### Configuration of global settings
 
 The configuration file for the HTML5 client is located in `/usr/share/meteor/bundle/programs/server/assets/app/config/settings.yml`. It contains all the settings for the HTML5 client.
@@ -1140,8 +1326,8 @@ The policy for guest management on the server is is set in the properties file f
 You can overwrite the default guest policy in `/etc/bigbluebutton/bbb-web.properties`. Just add the value you prefer, save the file and restart BigBlueButton.
 
 ```properties
-## Default Guest Policy
-## Valid values are ALWAYS_ACCEPT, ALWAYS_DENY, ASK_MODERATOR
+# Default Guest Policy
+# Valid values are ALWAYS_ACCEPT, ALWAYS_DENY, ASK_MODERATOR
 #
 defaultGuestPolicy=ALWAYS_ACCEPT
 ```
@@ -1149,14 +1335,54 @@ defaultGuestPolicy=ALWAYS_ACCEPT
 
 Ensure that the parameter `displayBrandingArea` is set to `true` in bbb-html5's configuration, restart BigBlueButton server with `sudo bbb-conf --restart` and pass `logo=<image-url>` in Custom parameters when creating the meeting.
 
-### Passing custom parameters to the client on join
+## Other meeting configs available
+These configs can be set in `/etc/bigbluebutton/bbb-web.properties`
+
+| Parameter                                | Description                                                                                   | Options                                                      | Default value                  |
+|------------------------------------------|-----------------------------------------------------------------------------------------------|--------------------------------------------------------------|--------------------------------|
+| `defaultMeetingLayout`                   | Default Meeting Layout                                                                        | CUSTOM_LAYOUT, SMART_LAYOUT, PRESENTATION_FOCUS, VIDEO_FOCUS | CUSTOM_LAYOUT _`overwritable`_ |
+| `defaultMaxUsers`                        | Maximum number of users a meeting can have                                                    | Integer `(0=disable)`                                        | 0 _`overwritable`_             |
+| `maxUserConcurrentAccesses`              | Maximum number of sessions that each user (extId) can open simultaneously in the same meeting | Integer (0=disable)                                          | 3                              |
+| `defaultMeetingDuration`                 | Duration of the meeting in minutes                                                            | Integer (0=disable)                                          | 0 _`overwritable`_             |
+| `clientLogoutTimerInMinutes`             | Number of minutes to logout client if user isn't responsive                                   | Integer (0=disable)                                          | 0                              |
+| `meetingExpireIfNoUserJoinedInMinutes`   | End meeting if no user joined within a period of time after meeting created                   | Integer                                                      | 5                              |
+| `meetingExpireWhenLastUserLeftInMinutes` | Number of minutes to end meeting when the last user left                                      | Integer (0=disable)                                          | 1                              |
+| `endWhenNoModerator`                     | End meeting when there are no moderators after a certain period of time                       | true/false                                                   | false _`overwritable`_         |
+| `endWhenNoModeratorDelayInMinutes`       | Number of minutes to wait for moderator rejoin before end meeting                             | Integer                                                      | 1 _`overwritable`_             |
+| `userInactivityInspectTimerInMinutes`    | User inactivity audit timer interval                                                          | Integer (0=disable)                                          | 0                              |
+| `userInactivityThresholdInMinutes`       | Number of minutes to consider a user inactive.                                                | Integer                                                      | 30                             |
+| `userActivitySignResponseDelayInMinutes` | Number of minutes for user to respond to inactivity warning before being logged out           | Integer                                                      | 5                              |
+| `webcamsOnlyForModerator`                | Allow webcams streaming reception only to and from moderators                                 | true/false                                                   | false  _`overwritable`_        |
+| `meetingCameraCap`                       | Per meeting camera share limit                                                                | Integer (0=disable)                                          | 0  _`overwritable`_            |
+| `userCameraCap`                          | Per user camera share limit                                                                   | Integer (0=disable)                                          | 3 _`overwritable`_             |
+| `maxPinnedCameras`                       | Maximum number of cameras pinned simultaneously                                               | Integer (0=disable)                                          | 3                              |
+| `muteOnStart`                            | Mute the meeting on start                                                                     | true/false                                                   | false _`overwritable`_         |
+| `allowModsToUnmuteUsers`                 | Gives moderators permission to unmute other users                                             | true/false                                                   | false _`overwritable`_         |
+| `allowModsToEjectCameras`                | Gives moderators permission to close other users' webcams                                     | true/false                                                   | false _`overwritable`_         |
+| `usersTimeout`                           | Timeout (millis) to remove a joined user after her/him left meeting without a rejoin          | Integer                                                      | 60000 (60s)                    |
+| `waitingGuestUsersTimeout`               | Timeout (millis) to remove guest users that stopped fetching for her/his status               | Integer                                                      | 30000 (30s)                    |
+| `enteredUsersTimeout`                    | Timeout (millis) to remove users that called the enter API but did not join                   | Integer                                                      | 45000 (45s)                    |
+| `breakoutRoomsRecord`                    | Enable Recordings in Breakout Rooms                                                           | true/false                                                   | false _`overwritable`_         |
+| `breakoutRoomsPrivateChatEnabled`        | Enable private chat in Breakout Rooms                                                         | true/false                                                   | true _`overwritable`_          |
+| `notifyRecordingIsOn`                    | Notify users that recording is on                                                             | true/false                                                   | false _`overwritable`_         |
+| `learningDashboardCleanupDelayInMinutes` | Number of minutes that Learning Dashboard will be available after the end of the meeting      | Integer (0=disable)                                          | 2 _`overwritable`_             |
+| `serviceEnabled`                         | API enabled                                                                                   | true/false                                                   | true                           |
+| `allowRequestsWithoutSession`            | Allow requests without JSESSIONID to be handled                                               | true/false                                                   | false                          |
+| `supportedChecksumAlgorithms`            | List of supported hash algorithms for validating checksums                                    | sha1, sha256, sha384, sha512                                 | sha1, sha256, sha384, sha512   |
+| `allowRevealOfBBBVersion`                | Allow endpoint with current BigBlueButton version                                             | true/false                                                   | false                          |
+| `recordFullDurationMedia`                | Controls whether media should be captured on their full duration if the meeting's recorded property is true | true/false | false            |
+
+- _`overwritable`_: Config will be overwritten if the param is present in the API `/create` request
+
+
+### Passing user metadata to the client on join
 
 The HTML5 client supports a list of parameters that can be added to the `join` API call which modify the look and default behaviour of the client. This list is accurate as of BigBlueButton version 2.2.17 (build 937). These parameters override the global defaults set in `settings.yml`. As the parameters are passed on call to join, it allows for some powerful customization that can vary depending on which user is joining the session.
 
 Useful tools for development:
 
 - A tool like (https://meyerweb.com/eric/tools/dencoder/) is useful in the encoding-decoding process for the fields expecting encoded value passed (see below).
-- The [API mate](https://mconf.github.io/api-mate/) allows you to directly experiment with these custom parameters. To use the API mate, run the following command on your BigBlueButton machine: `sudo bbb-conf --secret`. This creates a link for you with your secret as a parameter so you can get started experimenting right away.
+- The [API mate](https://mconf.github.io/api-mate/) allows you to directly experiment with these user metadata. To use the API mate, run the following command on your BigBlueButton machine: `sudo bbb-conf --secret`. This creates a link for you with your secret as a parameter so you can get started experimenting right away.
 
 #### Application parameters
 
@@ -1169,13 +1395,17 @@ Useful tools for development:
 | `userdata-bbb_listen_only_mode=`               | If set to `false`, the user will not be able to join the audio part of the meeting without a microphone (disables listen-only mode)                                                                                                                                                                                             | `true`        |
 | `userdata-bbb_skip_check_audio=`               | If set to `true`, the user will not see the "echo test" prompt when sharing audio                                                                                                                                                                                                                                               | `false`       |
 | `userdata-bbb_skip_check_audio_on_first_join=` | (Introduced in BigBlueButton 2.3) If set to `true`, the user will not see the "echo test" when sharing audio for the first time in the session. If the user stops sharing, next time they try to share audio the echo test window will be displayed, allowing for configuration changes to be made prior to sharing audio again | `false`       |
-| `userdata-bbb_override_default_locale=`        | (Introduced in BigBlueButton 2.3) If set to `de`, the user's browser preference will be ignored - the client will be shown in 'de' (i.e. German) regardless of the otherwise preferred locale 'en' (or other)                                                                                                                   | `null`        |
+| `userdata-bbb_skip_echotest_if_previous_device=` | (Introduced in BigBlueButton 3.0) If set to `true`, the user will not see the "echo test" if session has valid input/output devices stored previously | `false`       |
+| `userdata-bbb_override_default_locale=`        | (Introduced in BigBlueButton 2.3) If set to `de`, the user's browser preference will be ignored - the client will be shown in 'de' (i.e. German) regardless of the otherwise preferred locale 'en' (or other)                                                                                                                   | `null`        |
+| `userdata-bbb_hide_presentation_on_join`        | (Introduced in BigBlueButton 2.6) If set to `true` it will make the user enter the meeting with presentation minimized (Only for non-presenters), not permanent. 
+
+| `userdata-bbb_direct_leave_button` | (Introduced in BigBlueButton 2.7) If set to `true` it will make a button to leave the meeting appear to the left of the Options menu. | `false` |                                                                                                                  | `false`        |
 
 #### Branding parameters
 
 | Parameter                             | Description                                                                               | Default value |
 | ------------------------------------- | ----------------------------------------------------------------------------------------- | ------------- |
-| `userdata-bbb_display_branding_area=` | If set to `true`, the client will display the branding area in the upper left hand corner | `false`       |
+| `userdata-bbb_display_branding_area=` | If set to `true`, the client will display the branding area in the upper left hand corner | `true`       |
 
 #### Shortcut parameters
 
@@ -1193,7 +1423,11 @@ Useful tools for development:
 | `userdata-bbb_record_video=`                     | If set to `false`, the user won't have her/his video stream recorded                                                                                                                                                                                                                                                                    | `true`        |
 | `userdata-bbb_skip_video_preview=`               | If set to `true`, the user will not see a preview of their webcam before sharing it                                                                                                                                                                                                                                                     | `false`       |
 | `userdata-bbb_skip_video_preview_on_first_join=` | (Introduced in BigBlueButton 2.3) If set to `true`, the user will not see a preview of their webcam before sharing it when sharing for the first time in the session. If the user stops sharing, next time they try to share webcam the video preview will be displayed, allowing for configuration changes to be made prior to sharing | `false`       |
+| `userdata-bbb_skip_video_preview_if_previous_device=` | (Introduced in BigBlueButton 3.0) If set to `true`, the user will not see a preview of their webcam before sharing it if session has a valid input device stored previously | `false`       |
 | `userdata-bbb_mirror_own_webcam=`                | If set to `true`, the client will see a mirrored version of their webcam. Doesn't affect the incoming video stream for other users.                                                                                                                                                                                                     | `false`       |
+| `userdata-bbb_fullaudio_bridge=`                 | Specifies the audio bridge to be used in the client. Supported values: `sipjs`, `fullaudio`.                                                                                       | `fullaudio`   |
+| `userdata-bbb_transparent_listen_only=`          | If set to `true`, the experimental "transparent listen only" audio mode will be used                                                                                                                                                                                                                                                    | `false`       |
+
 
 #### Presentation parameters
 
@@ -1206,10 +1440,13 @@ Useful tools for development:
 | Parameter                           | Description                                                                                                     | Default value |
 | ----------------------------------- | --------------------------------------------------------------------------------------------------------------- | ------------- |
 | `userdata-bbb_multi_user_pen_only=` | If set to `true`, only the pen tool will be available to non-participants when multi-user whiteboard is enabled | `false`       |
-| `userdata-bbb_presenter_tools=`     | Pass in an array of permitted tools from `settings.yml`                                                         | all enabled   |
-| `userdata-bbb_multi_user_tools=`    | Pass in an array of permitted tools for non-presenters from `settings.yml`                                      | all enabled   |
+| `userdata-bbb_presenter_tools=`     | Pass in an array of permitted tools from `settings.yml`. The options we support are: `select`, `hand`, `draw`, `eraser`, `arrow`, `text`, `note`, `rectangle` and *`more`. Example: `userdata-bbb_presenter_tools=['eraser', 'note']` will allow only the eraser and note tools.                                                     | all enabled   |
+| `userdata-bbb_multi_user_tools=`    | Pass in an array of permitted tools for non-presenters from `settings.yml`. The options we support are: `select`, `hand`, `draw`, `eraser`, `arrow`, `text`, `note`, `rectangle` and *`more`. Example: `userdata-bbb_multi_user_tools=['eraser', 'note']` will allow only the eraser and note tools.                                          | all enabled   |
+*more: More includes the rest of the extra shapes, those being: `rectangle`, `ellipse`, `diamond`, `triangle`, `trapezoid`, `rhombus`, `hexagon`, `cloud`, `star`, `oval`, `x-box`, `check-box`, `arrow-left`, `arrow-up`, `arrow-down`, `arrow-right`, `frame`, `line`, `laser`.
 
-#### Themeing & styling parameters
+The use of *more will include all shapes listed above.
+
+#### Theming & styling parameters
 
 | Parameter                        | Description                                                                                                          | Default value |
 | -------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------- |
@@ -1220,12 +1457,14 @@ Useful tools for development:
 
 | Parameter                                  | Description                                                                                                             | Default value |
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- | ------------- |
-| `userdata-bbb_auto_swap_layout=`           | If set to `true`, the presentation area will be minimized when a user joins a meeting.                                  | `false`       |
-| `userdata-bbb_hide_presentation=`          | If set to `true`, the presentation area will not be displayed.                                                          | `false`       |
+| `userdata-bbb_auto_swap_layout=`           | If set to `true`, the presentation area will be minimized when a user joins a meeting. (Removed in 2.6)                                  | `false`       |
+| `userdata-bbb_hide_presentation=`          | If set to `true`, the presentation area will not be displayed. (Removed in 2.6)                                                          | `false`       |
+| `userdata-bbb_hide_presentation_on_join=`          | If set to `true`, the presentation area will start minimized, but can be restored                                                          | `false`       |
 | `userdata-bbb_show_participants_on_login=` | If set to `false`, the participants panel (and the chat panel) will not be displayed until opened.                      | `true`        |
 | `userdata-bbb_show_public_chat_on_login=`  | If set to `false`, the chat panel will not be visible on page load until opened. Not the same as disabling chat.        | `true`        |
 | `userdata-bbb_hide_nav_bar=`               | If set to `true`, the navigation bar (the top portion of the client) will not be displayed. Introduced in BBB 2.4-rc-3. | `false`       |
 | `userdata-bbb_hide_actions_bar=`           | If set to `true`, the actions bar (the bottom portion of the client) will not be displayed. Introduced in BBB 2.4-rc-3. | `false`       |
+| `userdata-bbb_default_layout=`             | The initial layout on client load. Options are: `CUSTOM_LAYOUT`, `SMART_LAYOUT`, `PRESENTATION_FOCUS`, `VIDEO_FOCUS`. If none is provided, the meeting layout (preset in bbb-web) will be used. Introduced in BBB 3.0.0-alpha.5. | `none`       |
 
 #### Examples
 
@@ -1282,9 +1521,9 @@ PROTOCOL=$(cat /etc/bigbluebutton/bbb-web.properties | grep -v '#' | grep '^bigb
 
 apt-get install -y nginx-full
 
-yq w -i $HTML5_CONFIG public.clientLog.external.enabled true
-yq w -i $HTML5_CONFIG public.clientLog.external.url     "$PROTOCOL://$HOST/html5log"
-yq w -i $HTML5_CONFIG public.app.askForFeedbackOnLogout true
+yq e -i '.public.clientLog.external.enabled = true' $HTML5_CONFIG
+yq e -i ".public.clientLog.external.url = \"$PROTOCOL://$HOST/html5log\"" $HTML5_CONFIG
+yq e -i '.public.app.askForFeedbackOnLogout = true' $HTML5_CONFIG
 chown meteor:meteor $HTML5_CONFIG
 
 mkdir -p /etc/bigbluebutton/nginx/
@@ -1300,7 +1539,7 @@ cat > /etc/nginx/conf.d/html5-client-log.conf << HERE
 log_format postdata '\$remote_addr [\$time_iso8601] \$request_body';
 HERE
 
-## We need nginx-full to enable postdata log_format
+# We need nginx-full to enable postdata log_format
 if ! dpkg -l | grep -q nginx-full; then
   apt-get install -y nginx-full
 fi
@@ -1342,7 +1581,7 @@ To validate incoming API calls, all external applications making API calls must 
 You’ll find the shared secret in `/etc/bigbluebutton/bbb-web.properties`
 
 ```properties
-beans.dynamicConferenceService.securitySalt=<value_of_salt>
+securitySalt=<value_of_salt>
 ```
 
 To change the shared secret, do the following:

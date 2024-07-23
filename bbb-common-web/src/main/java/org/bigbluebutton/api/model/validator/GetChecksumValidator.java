@@ -1,8 +1,10 @@
 package org.bigbluebutton.api.model.validator;
 
+import javax.servlet.http.HttpServletRequest;
 import javax.validation.ConstraintValidator;
 import javax.validation.ConstraintValidatorContext;
 
+import jakarta.ws.rs.core.MediaType;
 import org.apache.commons.codec.digest.DigestUtils;
 import org.bigbluebutton.api.model.constraint.GetChecksumConstraint;
 import org.bigbluebutton.api.model.shared.GetChecksum;
@@ -75,7 +77,7 @@ public class GetChecksumValidator implements ConstraintValidator<GetChecksumCons
                 log.info("No algorithm could be found that matches the provided checksum length");
         }
 
-        if (createdCheckSum == null || !createdCheckSum.equals(providedChecksum)) {
+        if (createdCheckSum == null || !createdCheckSum.equalsIgnoreCase(providedChecksum)) {
             log.info("checksumError: query string checksum failed. our: [{}], client: [{}]", createdCheckSum, providedChecksum);
             return false;
         }

@@ -38,6 +38,7 @@ const PresentationToolbarWrapper = styled.div`
     }
     border: 0;
     background-color: ${colorOffWhite};
+    color: ${toolbarButtonColor};
     cursor: pointer;
     margin: 0 ${whiteboardToolbarMargin} 0 0;
     padding: ${whiteboardToolbarPadding};
@@ -74,6 +75,11 @@ const QuickPollButton = styled(QuickPollDropdownContainer)`
   &:focus {
     background-color: ${colorOffWhite};
   }
+`;
+
+const QuickPollButtonWrapper = styled.div`
+  display: flex;
+  align-items: center;
 `;
 
 const PresentationSlideControls = styled.div`
@@ -194,16 +200,16 @@ const FitToWidthButton = styled(Button)`
   box-shadow: none !important;
   border: 0;
 
+  ${({ $fitToWidth }) => $fitToWidth && `
+    & > span {
+      border: solid ${borderSizeLarge} ${colorGrayDark};
+    }
+  `}
+
   &:focus {
     background-color: ${colorOffWhite};
     border: 0;
   }
-
-  ${({ panning }) => panning && `
-    > span {
-      background-color: #DCE4EC;
-    }
-  `}
 `;
 
 const MultiUserTool = styled.span`
@@ -220,6 +226,8 @@ const MultiUserTool = styled.span`
   align-items: center;
   box-shadow: 1px 1px ${borderSizeLarge} ${colorGrayDark};
   font-size: ${smPaddingX};
+  user-select: none;
+  cursor: pointer;
 
   [dir="ltr"] & {
     right: 1rem;
@@ -273,9 +281,38 @@ const WBAccessButton = styled(Button)`
   }
 `;
 
+const InfiniteWhiteboardButton = styled(Button)`
+  border: none !important;
+
+  svg {
+    [dir="rtl"] & {
+      -webkit-transform: scale(-1, 1);
+      -moz-transform: scale(-1, 1);
+      -ms-transform: scale(-1, 1);
+      -o-transform: scale(-1, 1);
+      transform: scale(-1, 1);
+    }
+  }
+
+  position: relative;
+  color: ${toolbarButtonColor};
+  background-color: ${colorOffWhite};
+  border-radius: 0;
+  box-shadow: none !important;
+  border: 0;
+  margin-left: 2px;
+  margin-right: 2px;
+
+  &:focus {
+    background-color: ${colorOffWhite};
+    border: 0;
+  }
+`;
+
 export default {
   PresentationToolbarWrapper,
   QuickPollButton,
+  QuickPollButtonWrapper,
   PresentationSlideControls,
   PrevSlideButton,
   NextSlideButton,
@@ -285,4 +322,5 @@ export default {
   MultiUserTool,
   WBAccessButton,
   MUTPlaceholder,
+  InfiniteWhiteboardButton,
 };

@@ -1,8 +1,8 @@
 ---
-id: troubleshooting
+id: road-map
 slug: /support/road-map
 title: Road Map
-sidebar_position: 4
+sidebar_position: 3
 description: BigBlueButton Road Map
 keywords:
 - roadmap
@@ -12,7 +12,7 @@ keywords:
 
 We (the [core developers](/support/faq#bigbluebutton-committer)) released our first version of BigBlueButton on June 12, 2009.
 
-Since the summer of 2009 we've [had many releases](/release-notes) of BigBlueButton, each release improving on the previous, each reflecting the desire by the core developers to build a solid product.
+Since the summer of 2009 we've had many releases of BigBlueButton, each release improving on the previous, each reflecting the desire by the core developers to build a solid product. Starting with BigBlueButton 2.0, our release notes are on [GitHub](https://github.com/bigbluebutton/bigbluebutton/releases).
 
 We think of BigBlueButton as a product.  We have a [development process](/support/faq#bigbluebutton-development-process) to ensure we deliver a real-time platform that is both easy to use for end-users and solid to build upon for developers.
 
@@ -46,15 +46,14 @@ We can measure our success by how easily we enable each person to accomplish the
 
 * **Scalability** - We build BigBlueButton to be a highly collaborative environment.  Our uses cases are one-to-one (such as student tutoring or coaching), small group collaboration, and one-to-many (recommend 100 users or less in a single session).  Even in the one-to-many, you can have 20 users all sharing the webcams and all able to talk.  In other words, we didn't build a webinar-type application that restricts usage.  Still, we think about scalability in each release and add (and refactor) the product to increase it.
 
-* **API** - BigBlueButton's provides a simple API for integration, and simple is good.  The API has enabled a [growing list](https://www.bigbluebutton.org/integrations/) of 3rd party integrations with other open source products.  As we work towards 1.0, we want to keep the APIs simple to further encourage integration.
+* **API** - BigBlueButton's provides a simple API for integration, and simple is good.  The API has enabled a [growing list](https://www.bigbluebutton.org/integrations/) of 3rd party integrations with other open source products.
 
-Obviously, we can't do everything in a single release.  If you read through the [release notes](/release-notes, you'll see that we sometimes implement features in phases -- such as record and playback being release first as capturing slides (v 0.80), then as capturing all content (v 0.81), and then with Start/Stop Record button (v 0.9.1) for moderator.
+Obviously, we can't do everything in a single release.  If you read through the release notes, you'll see that we sometimes implement features in phases -- such as record and playback being release first as capturing slides (v 0.80), then as capturing all content (v 0.81), and then with Start/Stop Record button (v 0.9.1) for moderator.
 
 The following sections outline (in no particular order) the road map for BigBlueButton.  If your wondering how a feature gets selected, see [how we prioritize features for each release](/support/faq#when-will-feature-x-be-implemented).
 
 If you have feedback on this document, please post to [BigBlueButton-dev](https://groups.google.com/group/bigbluebutton-dev/topics?gvc=2) mailing list.
 
-The latest release is [BigBlueButton 2.2](/administration/install), which provides a full HTML5 client for desktop, laptop, chromebook, and mobile (Android 6.0+ and iOS 12.2+).
 
 ## Core Features
 
@@ -72,21 +71,9 @@ The Flash client allowed users to individually close webcams.  This feature is n
 
 When uploading slides with clickable links, they could be clicked in the Flash client. Currently, they are not clickable in the HTML5 client.
 
-### Layout Dropdown
-
-The Flash client had a layout menu that let moderators push down layout changes in windows to all viewers.  The HMTL5 client does not use windows (it uses panels that show/hide).  We are going to add capabilities for the moderator to show/hide the presentation area in a future update.
-
 ### Show Slide Thumbnails
 
 At this time the slide navigation does not show thumbnails when using the slide menu to navigate to specific slides.
-
-### Whiteboard
-
-Support ability to move/edit whiteboard objects ([2351](https://github.com/bigbluebutton/bigbluebutton/issues/2351)).
-
-### Closed Captioning
-
-Enable the posting of a sub-rip title file (SRT) to the BigBlueButton server to add captions after the meeting is done (see [3864](https://github.com/bigbluebutton/bigbluebutton/issues/3864)).
 
 ## General Requirements
 

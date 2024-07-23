@@ -15,10 +15,9 @@ receive HTTP POST requests.
 These web hooks allow 3rd party applications to subscribe to different events that happen during a
 BigBlueButton session. An event can be: a meeting was created, a user joined, a new presentation was
 uploaded, a user left, a recording is being processed, and many others. You can see the entire list
-of events that generate web hooks calls in [this file](https://github.com/bigbluebutton/bbb-webhooks/blob/develop/messageMapping.js).
+of events that generate web hooks calls in [this file](https://github.com/bigbluebutton/bbb-webhooks/blob/fea98d5969050cec792b2a5890f58fd91ce57872/src/process/event.js#L8-L54).
 
-Installation
-------------
+## Installation
 
 To install webhooks, run the following command on your BigBlueButton server:
 
@@ -26,8 +25,7 @@ To install webhooks, run the following command on your BigBlueButton server:
 $ sudo apt-get install bbb-webhooks
 ```
 
-Registering hooks: API calls
-----------------------------
+## Registering hooks: API calls
 
 This application adds three new API calls to BigBlueButton's API.
 
@@ -61,7 +59,7 @@ Hooks are permanently stored on redis and will enabled until the hook is explici
 ```xml
 <response>
   <returncode>SUCCESS</returncode>
-  <hookID>1</hookID>
+  <hookID>12345678-1234-5678-1234-567812345678</hookID>
   <permanentHook>false</permanentHook>
   <rawData>false</rawData>
 </response>
@@ -72,7 +70,7 @@ Hooks are permanently stored on redis and will enabled until the hook is explici
 ```xml
 <response>
   <returncode>SUCCESS</returncode>
-  <hookID>1</hookID>
+  <hookID>12345678-1234-5678-1234-567812345678</hookID>
   <messageKey>duplicateWarning</messageKey>
   <message>There is already a hook for this callback URL.</message>
 </response>
@@ -162,14 +160,14 @@ only the global hooks, as might be expected).
   <returncode>SUCCESS</returncode>
   <hooks>
     <hook>
-      <hookID>1</hookID>
+      <hookID>12345678-1234-5678-1234-567812345678</hookID>
       <callbackURL><![CDATA[http://postcatcher.in/catchers/abcdefghijk]]></callbackURL>
       <meetingID><![CDATA[my-meeting</meetingID]]>> <!-- a hook created for this meeting only -->
       <permanentHook>false</permanentHook>
       <rawData>false</rawData>
     </hook>
     <hook>
-      <hookID>2</hookID>
+      <hookID>01234567-89ab-cdef-0123-456789abcdef</hookID>
       <callbackURL><![CDATA[http://postcatcher.in/catchers/1234567890]]></callbackURL>
       <!-- no meetingID means this is a global hook -->
       <permanentHook>false</permanentHook>
@@ -188,8 +186,7 @@ only the global hooks, as might be expected).
 </response>
 ```
 
-Callback format
----------------
+## Callback format
 
 All hooks registered are called via HTTP POST with all the information about the event in
 the body of this request. The request is sent with the `Content-type` HTTP header set to
@@ -229,10 +226,10 @@ request. If the registered URL is `http://my-server.com/callback`, it will recei
 checksum as in `http://my-server.com/callback?checksum=yalsdk18129e019iklasd90i`.
 
 The way the checksum is created is similar to how the checksums are calculated for
-the other BigBlueButton's API calls (take a look at [`setConfigXML`](/development/api#setconfigxml)).
+the other BigBlueButton's API calls.
 
 ```
-sha1(<callback URL>+<data body>+<shared secret>)
+sha<1|256|384|512>(<callback URL>+<data body>+<shared secret>)
 ```
 
 Where:
@@ -258,81 +255,53 @@ timestamp=1234567890
 ```
 
 * Concatenate the original callback URL, the string from the previous step, and the BigBlueButton's salt.
-* Calculate a `sha1()` of this string.
+* Calculate a `sha<1|256|384|512>()` of this string.
 * The checksum calculated should equal the checksum received in the parameters of the request.
 
-More details
-------------
+## More details
 
 * Callbacks are always triggered for one event at a time and in order. They are ordered the same way
-  
   they appear on redis pubsub (which might not exactly be the order indicated by their timestamps).
-  
   The timestamps will almost always be ordered as well, but it's not guaranteed.
 * The application assumes that events are never duplicated on pubsub. If they happen to be
-  
   duplicated, the callback calls will also be duplicated.
 * Hooks are only removed if a call to `/hooks/destroy` is made or if the callbacks for the hook fail too
-  
   many times (~12) for a long period of time (~5min). They are never removed otherwise. Valid for
-  
   both global hooks and hooks for specific meetings. So it's recommended for 3rd-party applications
-  
   to register the hooks more than just once. You can either check if your hook is registered with
-  
   `/hooks/list` and register it if it isn't, or simply register your hook every e.g. 5 minutes.
 * The application uses internal mappings to find out to which meeting the events received from redis
-  
-  are related to. These mappings are removed after 24 hours of inactivity. If there are no events at
-  
+  are related to. These mappings are removed after a week of inactivity. If there are no events at
   all for a given meeting during this period, it will be assumed dead. This is done to prevent data
-  
   from being stored forever on redis. This means that you can have issues if you have a hook
-  
   registered for an specific meeting (doesn't happen for global hooks) and this meeting happens to
-  
-  not generate events for 24 hours, but it's still valid after it. Something very, very unlikely to
-  
+  not generate events for a week, but it's still valid after it. Something very, very unlikely to
   happen!
 * External URLs are expected to respond with the HTTP status 2xx (200 would be the default expected).
-  
   Anything different from these values will be considered an error and the callback will be called
-  
   again. This includes redirects: if your hook redirects the request, it will be considered as
-  
   invalid and the web hooks application will try to call this hook again.
 * If a meeting is created while the web hooks application is down, callbacks will never be triggered
-  
   for this meeting. The application needs to detect the create event (`meeting_created_message`) to
-  
   have a proper mapping of internal to external meeting IDs. So make sure the web hooks application
-  
   is always running while BigBlueButton is running!
-* If you register a hook with, for example, the URL "http://myserver.com/my/hook" and no `meetingID`
-  
+* If you register a hook with, for example, the URL `http://myserver.com/my/hook` and no `meetingID`
   set (making it a global hook) and later try to register another hook with the same URL but with
-  
   a `meetingID` set, the first hook will not be removed nor modified, while the second hook will
-  
   not be created.
 
-Test it
--------
+## Test it
 
 The easiest way to test the web hooks application is to register hooks in your BigBlueButton server
-using the [API Mate](http://mconf.github.io/api-mate/) and capture the callbacks using the
-service [PostCatcher](http://postcatcher.in/).
+using the [API Mate](http://mconf.github.io/api-mate/) and capture the callbacks using a 3rd party
+POST catcher, such as [webhook.site](https://webhook.site/).
+There's also a test server available at the bbb-webhooks source code that can be used for catching hooks,
+see: https://github.com/bigbluebutton/bbb-webhooks/blob/develop/extra/interceptor.js.
 
 Follow the steps:
 
-* Open [PostCatcher](http://postcatcher.in/) and click on "Start testing your POST requests now"
-
-* It will redirect you to an URL such as `http://postcatcher.in/catchers/5527e67ba4c6dd0300000738`.
-  
-  Save this URL to use later.
-
-* Open the [API Mate](http://mconf.github.io/api-mate/) and configure your server and shared secret.
-
+* Open your webhooks catcher of choice and copy its endpoint URL.
+* Open [API Mate](http://mconf.github.io/api-mate/) and configure your server and shared secret.
 * On the menu "Custom parameters", there's a field "Custom API calls:". Add these values to it:
 
 ```
@@ -343,26 +312,16 @@ hooks/list
 * On the same menu section, add the following values to "Custom parameters:":
 
 ```
-callbackURL=http://postcatcher.in/catchers/5527e67ba4c6dd0300000738
+callbackURL=<your webhook catcher URL>
 ```
 
-    Modify this URL to the URL you got from PostCatcher earlier.
-
 * On the API Mate, click on the "custom call: hooks/create" link. It should respond with a success
-  
   message.
-
 * On the API Mate, click on the "custom call: hooks/list" link to check if your hook was really
-  
   registered.
-
 * Create a meeting and join it using the API Mate.
+* Do stuff inside the meeting and check your webhooks endpoint to see if it received the callbacks.
 
-* Do stuff inside the meeting and check your PostCatcher page, you should see events pop up on it
-  
-  as you interact in your meeting.
+## Development
 
-Development
------------
-
-See [Webhooks docs in GitHub](https://github.com/bigbluebutton/bigbluebutton/tree/v2.0.x-release/bbb-webhooks#development).
+See [Webhooks docs in GitHub](https://github.com/bigbluebutton/bbb-webhooks).

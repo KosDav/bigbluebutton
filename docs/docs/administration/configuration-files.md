@@ -10,6 +10,7 @@ keywords:
 
 ## Overview
 
+
 This document gives an overview of the BigBlueButton configuration files.
 
 We recommend you make changes only to the override files (`/etc/bigbluebutton`) so that when you update to a newer version of BigBlueButton your configuration changes are not overwritten by the new packages.
@@ -24,11 +25,12 @@ Starting with BigBlueButton 2.3 many of the configuration files have local overr
 | /usr/share/bbb-apps-akka/conf/application.conf                          | /etc/bigbluebutton/bbb-apps-akka.conf            |                                                                                  |
 | /usr/share/bbb-fsesl-akka/conf/application.conf                         | /etc/bigbluebutton/bbb-fsesl-akka.conf           |                                                                                  |
 | /usr/share/meteor/bundle/programs/server/assets/app/config/settings.yml | /etc/bigbluebutton/bbb-html5.yml                 | Arrays are merged by replacement (as of 2.4-rc-5)                                |
-| /usr/share/meteor/bundle/bbb-html5-with-roles.conf                      | /etc/bigbluebutton/bbb-html5-with-roles.conf     |                                                                                  |
 | /usr/share/bbb-web/WEB-INF/classes/spring/turn-stun-servers.xml         | /etc/bigbluebutton/turn-stun-servers.xml         | Replaces the original file                                                       |
 | /usr/local/bigbluebutton/bbb-webrtc-sfu/config/default.yml              | /etc/bigbluebutton/bbb-webrtc-sfu/production.yml | Arrays are merged by replacement                                                 |
-| /etc/bigbluebutton/recording/recording.yml                              | /usr/local/bigbluebutton/core/scripts/bigbluebutton.yml |
-| /etc/bigbluebutton/recording/presentation.yml                           | /usr/local/bigbluebutton/core/scripts/presentation.yml/presentation.yml |
+| /usr/local/bigbluebutton/bbb-pads/config/settings.json                  | /etc/bigbluebutton/bbb-pads.json                 | Arrays are merged by replacement                                                 |
+| /usr/local/bigbluebutton/core/scripts/bigbluebutton.yml                 | /etc/bigbluebutton/recording/recording.yml       |
+| /usr/local/bigbluebutton/core/scripts/presentation.yml                  | /etc/bigbluebutton/recording/presentation.yml    |
+| /etc/cron.daily/bigbluebutton                                           | /etc/default/bigbluebutton-cron-config    | Only variables allowed in the override
 
 <br /><br />
 
@@ -36,7 +38,7 @@ For `bbb-web.properties`, the settings are name/value pair. For example, the fol
 
 ```
 #
-## Use this file to override default entries in /usr/share/bbb-web/WEB-INF/classes/bigbluebutton.properties
+# Use this file to override default entries in /usr/share/bbb-web/WEB-INF/classes/bigbluebutton.properties
 #
 
 bigbluebutton.web.serverURL=https://droplet-7162.meetbbb.com
@@ -78,17 +80,15 @@ public:
 
 #### Log monitoring for server logs (bbb-html5)
 
-Since BigBlueButton 2.3 we run multiple nodejs processes in production mode, so tailing logs is slightly different from `journalctl -f bbb-html5.service` which was used in 2.2. Rather than listing all the services ( `bbb-html5-backend@1.service bbb-html5-backend@2.service bbb-html5-frontend@1.service bbb-html5-frontend@2.service bbb-html5-frontend@3.service bbb-html5-frontend@4.service ...` ) you can use the wildcard operator `*`. Notice the different process id for each bbb-html5-\* service. Also notice `systemd_start_frontend.sh` signifying a log from a frontend process vs `systemd_start.sh` - backend process.
+In BigBlueButton 3.0 we modified the architecture to shift the load away from the old frontend and backend bbb-html5 pools of services. Logs for the new services can be foud via:
 
-```
-## journalctl -f -u bbb-html5-*
--- Logs begin at Mon 2021-03-15 12:13:05 UTC. --
-Mar 15 15:14:18 demo2 systemd_start_frontend.sh[3881]: debug: Redis: SendCursorPositionEvtMsg completed sync
-Mar 15 15:14:18 demo2 systemd_start_frontend.sh[3891]: debug: Redis: SendCursorPositionEvtMsg completed sync
-Mar 15 15:14:18 demo2 systemd_start_frontend.sh[3888]: debug: Publishing Polls {"meetingId":"37d0fb4f4617b3c97948d717435f9e1cf6998477-1615821214341","userId":"w_el87iar97iwa"}
-...
-Mar 15 15:30:18 demo2 systemd_start.sh[3869]: debug: Redis: UpdateBreakoutUsersEvtMsg completed sync
-```
+`journalctl -f -u bbb-html5.service`
+￼
+￼Akka-apps is responsible for most of the logic, so key info can be obtained via
+￼
+￼`journalctl -f -u bbb-apps-akka.service`
+
+`SYSTEMD_LESS=FRXMK journalctl -u bbb-graphql-middleware.service -f` can also be useful.
 
 #### Logs sent directly from the client
 
@@ -183,7 +183,8 @@ Here's a sample log entry
 
 Located in `/etc/nginx/sites-enabled/bigbluebutton`
 
-This configures nginx to use `/var/www/bigbluebutton-default` as the default site. ([src](https://github.com/bigbluebutton/bigbluebutton/blob/master/bigbluebutton-client/config/bigbluebutton.nginx))
+This configures nginx to use `/var/www/bigbluebutton-default/assets` as the default site. ([src](https://github.com/bigbluebutton/bigbluebutton/blob/develop/build/packages-template/bbb-html5/bigbluebutton.nginx))
+
 
 ### Log files
 

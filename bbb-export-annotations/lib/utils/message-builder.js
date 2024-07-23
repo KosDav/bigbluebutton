@@ -1,4 +1,5 @@
-const config = require('../../config');
+import fs from 'fs';
+const config = JSON.parse(fs.readFileSync('./config/settings.json', 'utf8'));
 
 const EXPORT_STATUSES = Object.freeze({
   COLLECTING: 'COLLECTING',
@@ -53,7 +54,7 @@ class PresAnnStatusMsg {
   }
 };
 
-class NewPresAnnFileAvailableMsg {
+class NewPresFileAvailableMsg {
   constructor(exportJob, link) {
     this.message = {
       envelope: {
@@ -70,8 +71,12 @@ class NewPresAnnFileAvailableMsg {
           userId: '',
         },
         body: {
-          fileURI: link,
+          annotatedFileURI: link,
+          originalFileURI: '',
+          convertedFileURI: '',
+          fileName: exportJob.filename,
           presId: exportJob.presId,
+          fileStateType: 'Annotated',
         },
       },
     };
@@ -82,7 +87,4 @@ class NewPresAnnFileAvailableMsg {
   };
 };
 
-module.exports = {
-  PresAnnStatusMsg,
-  NewPresAnnFileAvailableMsg,
-};
+export {PresAnnStatusMsg, NewPresFileAvailableMsg};

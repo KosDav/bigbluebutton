@@ -15,16 +15,23 @@ rm -rf staging
 # package
 
 mkdir -p staging/usr/local/bigbluebutton/bbb-export-annotations
+mkdir -p staging/usr/local/share/fonts/
 
 find -maxdepth 1 ! -path . ! -name staging $(printf "! -name %s " $(cat .build-files)) -exec cp -r {} staging/usr/local/bigbluebutton/bbb-export-annotations/ \;
 
 pushd .
 cd staging/usr/local/bigbluebutton/bbb-export-annotations/
 npm install --production
+chmod -R a+rX .
 popd
 
 mkdir -p staging/usr/lib/systemd/system
 cp bbb-export-annotations.service staging/usr/lib/systemd/system
+
+#
+# Install fonts
+cp fonts/* staging/usr/local/share/fonts/
+chmod -R a+rX staging/usr/local/share/fonts/
 
 ##
 
@@ -38,5 +45,6 @@ fpm -s dir -C ./staging -n $PACKAGE \
     --before-remove before-remove.sh \
     --description "BigBlueButton Export Annotations" \
     $DIRECTORIES \
-    $OPTS
+    $OPTS \
+    -d 'nodejs (>= 18)' -d 'nodejs (<< 20)'
 

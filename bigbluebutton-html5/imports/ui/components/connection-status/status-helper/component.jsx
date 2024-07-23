@@ -1,9 +1,11 @@
 import React, { Fragment, PureComponent } from 'react';
 import { defineMessages, injectIntl } from 'react-intl';
+import { useReactiveVar } from '@apollo/client';
 import Styled from './styles';
-import { withModalMounter } from '/imports/ui/components/common/modal/service';
 import Icon from '/imports/ui/components/connection-status/icon/component';
 import SettingsMenuContainer from '/imports/ui/components/settings/container';
+import connectionStatus from '/imports/ui/core/graphql/singletons/connectionStatus';
+import { getWorstStatus } from '../service';
 
 const intlMessages = defineMessages({
   label: {
@@ -17,8 +19,16 @@ const intlMessages = defineMessages({
 });
 
 class ConnectionStatusIcon extends PureComponent {
+  constructor(props) {
+    super(props);
+
+    this.state = { isSettingsMenuModalOpen: false };
+
+    this.setSettingsMenuModalIsOpen = this.setSettingsMenuModalIsOpen.bind(this);
+  }
+  // eslint-disable-next-line
   renderIcon(level = 'normal') {
-    return(
+    return (
       <Styled.IconWrapper>
         <Icon
           level={level}
@@ -29,23 +39,26 @@ class ConnectionStatusIcon extends PureComponent {
   }
 
   openAdjustSettings() {
-    const {
-      closeModal,
-      mountModal,
-    } = this.props;
+    this.setSettingsMenuModalIsOpen(true);
+  }
 
-    closeModal();
-    mountModal(<SettingsMenuContainer selectedTab={2} />);
+  setSettingsMenuModalIsOpen(value) {
+    const { closeModal } = this.props;
+
+    this.setState({ isSettingsMenuModalOpen: value });
+    if (!value) {
+      closeModal();
+    }
   }
 
   render() {
     const {
       intl,
-      stats,
+      currentStatus,
     } = this.props;
-  
+
     let color;
-    switch (stats) {
+    switch (currentStatus) {
       case 'warning':
         color = 'success';
         break;
@@ -59,34 +72,59 @@ class ConnectionStatusIcon extends PureComponent {
         color = 'success';
     }
 
-    const level = stats ? stats : 'normal';
+    const { isSettingsMenuModalOpen } = this.state;
 
     return (
-      <Fragment>
+      <>
         <Styled.StatusIconWrapper color={color}>
-          {this.renderIcon(level)}
+          {this.renderIcon(currentStatus)}
         </Styled.StatusIconWrapper>
         <Styled.Label>
           {intl.formatMessage(intlMessages.label)}
         </Styled.Label>
-        {(level === 'critical' || level === 'danger')
+        {(currentStatus === 'critical' || currentStatus === 'danger') || isSettingsMenuModalOpen
           ? (
             <div>
               <Styled.Settings
+              // eslint-disable-next-line
                 onClick={this.openAdjustSettings.bind(this)}
                 role="button"
               >
                 {intl.formatMessage(intlMessages.settings)}
               </Styled.Settings>
+              {isSettingsMenuModalOpen
+                ? (
+                  <SettingsMenuContainer
+                    selectedTab={2}
+                    {...{
+                      onRequestClose: () => this.setSettingsMenuModalIsOpen(false),
+                      priority: 'medium',
+                      setIsOpen: this.setSettingsMenuModalIsOpen,
+                      isOpen: isSettingsMenuModalOpen,
+                    }}
+                  />
+                ) : null}
             </div>
           )
           : (
             <div>&nbsp;</div>
-          )
-        }
-      </Fragment>
+          )}
+      </>
     );
   }
 }
 
-export default withModalMounter(injectIntl(ConnectionStatusIcon));
+const WrapConnectionStatus = (props) => {
+  const rttStatus = useReactiveVar(connectionStatus.getRttStatusVar());
+  const jitterStatus = useReactiveVar(connectionStatus.getJitterStatusVar());
+  const packetLossStatus = useReactiveVar(connectionStatus.getPacketLossStatusVar());
+  const status = getWorstStatus([rttStatus, jitterStatus, packetLossStatus]);
+  return (
+    <ConnectionStatusIcon
+      {...props}
+      currentStatus={status}
+    />
+  );
+};
+
+export default injectIntl(WrapConnectionStatus);

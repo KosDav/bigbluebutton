@@ -1,18 +1,32 @@
 import React from 'react';
-import _ from 'lodash';
-import { withTracker } from 'meteor/react-meteor-data';
-import { withModalMounter } from '/imports/ui/components/common/modal/service';
-import Settings from '/imports/ui/services/settings';
-import ConnectionStatusService from '../service';
-import ConnectionStatusComponent from './component';
+import { CONNECTION_STATUS_REPORT_SUBSCRIPTION } from '../queries';
+import Service from '../service';
+import Component from './component';
+import useCurrentUser from '/imports/ui/core/hooks/useCurrentUser';
+import { useGetStats } from '../../video-provider/hooks';
+import useDeduplicatedSubscription from '/imports/ui/core/hooks/useDeduplicatedSubscription';
+import { useReactiveVar } from '@apollo/client';
+import connectionStatus from '/imports/ui/core/graphql/singletons/connectionStatus';
 
-const connectionStatusContainer = props => <ConnectionStatusComponent {...props} />;
+const ConnectionStatusContainer = (props) => {
+  const { data } = useDeduplicatedSubscription(CONNECTION_STATUS_REPORT_SUBSCRIPTION);
+  const connectionData = data ? Service.sortConnectionData(data.user_connectionStatusReport) : [];
+  const { data: currentUser } = useCurrentUser((u) => ({ isModerator: u.isModerator }));
+  const amIModerator = !!currentUser?.isModerator;
 
-export default withModalMounter(withTracker(({ mountModal }) => ({
-  closeModal: (dataSaving, intl) => {
-    ConnectionStatusService.updateDataSavingSettings(dataSaving, intl);
-    mountModal(null);
-  },
-  connectionStatus: ConnectionStatusService.getConnectionStatus(),
-  dataSaving: _.clone(Settings.dataSaving),
-}))(connectionStatusContainer));
+  const newtworkData = useReactiveVar(connectionStatus.getNetworkDataVar());
+
+  const getVideoStreamsStats = useGetStats();
+
+  return (
+    <Component
+      {...props}
+      connectionData={connectionData}
+      amIModerator={amIModerator}
+      getVideoStreamsStats={getVideoStreamsStats}
+      networkData={newtworkData}
+    />
+  );
+};
+
+export default ConnectionStatusContainer;

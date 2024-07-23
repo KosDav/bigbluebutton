@@ -34,22 +34,24 @@ case class BreakoutProps(
 
 case class PasswordProp(moderatorPass: String, viewerPass: String, learningDashboardAccessToken: String)
 
-case class RecordProp(record: Boolean, autoStartRecording: Boolean, allowStartStopRecording: Boolean, keepEvents: Boolean)
+case class RecordProp(record: Boolean, autoStartRecording: Boolean, allowStartStopRecording: Boolean, recordFullDurationMedia: Boolean, keepEvents: Boolean)
 
-case class WelcomeProp(welcomeMsgTemplate: String, welcomeMsg: String, modOnlyMessage: String)
+case class WelcomeProp(welcomeMsg: String, welcomeMsgForModerators: String)
 
 case class VoiceProp(telVoice: String, voiceConf: String, dialNumber: String, muteOnStart: Boolean)
 
 case class UsersProp(
-    maxUsers:                 Int,
-    maxUserConcurrentAccesses:Int,
-    webcamsOnlyForModerator:  Boolean,
-    userCameraCap:            Int,
-    guestPolicy:              String,
-    meetingLayout:            String,
-    allowModsToUnmuteUsers:   Boolean,
-    allowModsToEjectCameras:  Boolean,
-    authenticatedGuest:       Boolean
+    maxUsers:                     Int,
+    maxUserConcurrentAccesses:    Int,
+    webcamsOnlyForModerator:      Boolean,
+    userCameraCap:                Int,
+    guestPolicy:                  String,
+    meetingLayout:                String,
+    allowModsToUnmuteUsers:       Boolean,
+    allowModsToEjectCameras:      Boolean,
+    authenticatedGuest:           Boolean,
+    allowPromoteGuestToModerator: Boolean,
+    waitingGuestUsersTimeout: Long
 )
 
 case class MetadataProp(metadata: collection.immutable.Map[String, String])
@@ -63,11 +65,16 @@ case class LockSettingsProps(
     hideUserList:           Boolean,
     lockOnJoin:             Boolean,
     lockOnJoinConfigurable: Boolean,
-    hideViewersCursor:      Boolean
+    hideViewersCursor:      Boolean,
+    hideViewersAnnotation:  Boolean
 )
 
 case class SystemProps(
-    html5InstanceId: Int
+    loginUrl: String,
+    logoutUrl: String,
+    customLogoURL: String,
+    bannerText: String,
+    bannerColor: String,
 )
 
 case class GroupProps(
@@ -88,7 +95,8 @@ case class DefaultProps(
     metadataProp:      MetadataProp,
     lockSettingsProps: LockSettingsProps,
     systemProps:       SystemProps,
-    groups:            Vector[GroupProps]
+    groups:            Vector[GroupProps],
+    overrideClientSettings: String
 )
 
 case class StartEndTimeStatus(startTime: Long, endTime: Long)

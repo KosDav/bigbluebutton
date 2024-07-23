@@ -1,49 +1,45 @@
-const { test } = require('@playwright/test');
-const { SharedNotes, SharedNotesMultiUsers } = require('./sharednotes');
+const { test } = require('../fixtures');
+const { SharedNotes } = require('./sharednotes');
+const { initializePages } = require('../core/helpers');
+const { fullyParallel } = require('../playwright.config');
 
-test.describe.parallel('Shared Notes', () => {
-  test('Open Shared notes @ci', async ({ browser, page, context }) => {
-    const sharedNotes = new SharedNotes(browser, context);
-    await sharedNotes.initModPage(page);
+test.describe('Shared Notes', () => {
+  const sharedNotes = new SharedNotes();
+
+  test.describe.configure({ mode: fullyParallel ? 'parallel' : 'serial' });
+  test[fullyParallel ? 'beforeEach' : 'beforeAll'](async ({ browser }) => {
+    await initializePages(sharedNotes, browser, { isMultiUser: true });
+  });
+
+  test('Open shared notes', { tag: '@ci' }, async () => {
     await sharedNotes.openSharedNotes();
   });
-  test('Type in shared notes', async ({ browser, page, context }) => {
-    // https://docs.bigbluebutton.org/2.5/release-tests.html#using-shared-notes-panel
-    const sharedNotes = new SharedNotes(browser, context);
-    await sharedNotes.initModPage(page);
+
+  test('Type in shared notes', { tag: '@ci' }, async () => {
     await sharedNotes.typeInSharedNotes();
   });
-  test('Formate text in shared notes', async ({ browser, page, context }) => {
-    // https://docs.bigbluebutton.org/2.5/release-tests.html#using-shared-notes-formatting-tools
-    const sharedNotes = new SharedNotes(browser, context);
-    await sharedNotes.initModPage(page);
+
+  test('Formate text in shared notes', { tag: '@ci' }, async () => {
     await sharedNotes.formatTextInSharedNotes();
   });
-  test('Export shared notes', async ({ browser, page, context }, testInfo) => {
-    // https://docs.bigbluebutton.org/2.5/release-tests.html#exporting-shared-notes
-    const sharedNotes = new SharedNotes(browser, context);
-    await sharedNotes.initModPage(page);
-    await sharedNotes.exportSharedNotes(page);
+
+  test('Export shared notes', { tag: '@ci' }, async ({}, testInfo) => {
+    await sharedNotes.exportSharedNotes(testInfo);
   });
-  test('Convert notes to whiteboard', async ({ browser, page, context }) => {
-    const sharedNotes = new SharedNotes(browser, context);
-    await sharedNotes.initPages(page);
+
+  test('Convert notes to presentation', { tag: '@ci' }, async () => {
     await sharedNotes.convertNotesToWhiteboard();
   });
-  test('Multi users edit', async ({ browser, page, context }) => {
-    const sharedNotes = new SharedNotes(browser, context);
-    await sharedNotes.initPages(page);
+
+  test('Multiusers edit', async () => {
     await sharedNotes.editSharedNotesWithMoreThanOneUSer();
   });
-  test('See notes without edit permission', async ({ browser, page, context }) => {
-    const sharedNotes = new SharedNotes(browser, context);
-    await sharedNotes.initPages(page);
+
+  test('See notes without edit permission', async () => {
     await sharedNotes.seeNotesWithoutEditPermission();
   });
-  test('Pin notes onto whiteboard', async ({ browser, page, context }) => {
-    const sharedNotes = new SharedNotes(browser, context);
-    await sharedNotes.initModPage(page);
-    await sharedNotes.initUserPage1();
-    await sharedNotes.pinNotesOntoWhiteboard();
+
+  test('Pin and unpin notes onto whiteboard', { tag: '@ci' }, async () => {
+    await sharedNotes.pinAndUnpinNotesOntoWhiteboard();
   });
 });

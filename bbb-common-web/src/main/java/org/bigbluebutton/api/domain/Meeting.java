@@ -27,9 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.locks.Lock;
-
-import org.apache.commons.lang3.RandomStringUtils;
+import java.util.stream.Collectors;
 
 public class Meeting {
 
@@ -61,7 +59,8 @@ public class Meeting {
 	private Boolean notifyRecordingIsOn;
 	private String welcomeMsgTemplate;
 	private String welcomeMsg;
-	private String modOnlyMessage = "";
+	private String welcomeMsgForModerators = "";
+	private String loginUrl;
 	private String logoutUrl;
 	private int logoutTimer = 0;
 	private int maxUsers;
@@ -70,6 +69,7 @@ public class Meeting {
 	private boolean record;
 	private boolean autoStartRecording = false;
 	private boolean allowStartStopRecording = false;
+	private boolean recordFullDurationMedia = false;
 	private boolean haveRecordingMarks = false;
 	private boolean webcamsOnlyForModerator = false;
 	private Integer meetingCameraCap = 0;
@@ -81,6 +81,8 @@ public class Meeting {
 	private String guestLobbyMessage = "";
 	private Map<String,String> usersWithGuestLobbyMessages;
 	private Boolean authenticatedGuest = false;
+    private Boolean allowPromoteGuestToModerator = false;
+	private long waitingGuestUsersTimeout = 30000;
 	private String meetingLayout = MeetingLayout.SMART_LAYOUT;
 	private boolean userHasJoined = false;
 	private Map<String, String> guestUsersWithPositionInWaitingLine;
@@ -111,13 +113,13 @@ public class Meeting {
     private Integer endWhenNoModeratorDelayInMinutes = 1;
 
 	public final BreakoutRoomsParams breakoutRoomsParams;
-	public final LockSettingsParams lockSettingsParams;
+	public LockSettingsParams lockSettingsParams;
 
 	public final Integer maxUserConcurrentAccesses;
 
 	private String meetingEndedCallbackURL = "";
 
-	private Integer html5InstanceId;
+	private String overrideClientSettings = "";
 
     public Meeting(Meeting.Builder builder) {
         name = builder.name;
@@ -142,12 +144,14 @@ public class Meeting {
         maxUsers = builder.maxUsers;
         bannerColor = builder.bannerColor;
         bannerText = builder.bannerText;
+        loginUrl = builder.loginUrl;
         logoutUrl = builder.logoutUrl;
         logoutTimer = builder.logoutTimer;
         defaultAvatarURL = builder.defaultAvatarURL;
         record = builder.record;
         autoStartRecording = builder.autoStartRecording;
         allowStartStopRecording = builder.allowStartStopRecording;
+        recordFullDurationMedia = builder.recordFullDurationMedia;
         webcamsOnlyForModerator = builder.webcamsOnlyForModerator;
         meetingCameraCap = builder.meetingCameraCap;
         userCameraCap = builder.userCameraCap;
@@ -163,14 +167,15 @@ public class Meeting {
         isBreakout = builder.isBreakout;
         guestPolicy = builder.guestPolicy;
         authenticatedGuest = builder.authenticatedGuest;
-		meetingLayout = builder.meetingLayout;
+        allowPromoteGuestToModerator = builder.allowPromoteGuestToModerator;
+        waitingGuestUsersTimeout = builder.waitingGuestUsersTimeout;
+        meetingLayout = builder.meetingLayout;
         allowRequestsWithoutSession = builder.allowRequestsWithoutSession;
         breakoutRoomsParams = builder.breakoutRoomsParams;
         lockSettingsParams = builder.lockSettingsParams;
 		maxUserConcurrentAccesses = builder.maxUserConcurrentAccesses;
         endWhenNoModerator = builder.endWhenNoModerator;
         endWhenNoModeratorDelayInMinutes = builder.endWhenNoModeratorDelayInMinutes;
-        html5InstanceId = builder.html5InstanceId;
 		groups = builder.groups;
 		guestUsersWithPositionInWaitingLine = new HashMap<>();
         userCustomData = new HashMap<>();
@@ -197,12 +202,16 @@ public class Meeting {
 		return users.isEmpty() ? Collections.<User>emptySet() : Collections.unmodifiableCollection(users.values());
 	}
 
+	public Collection<User> getOnlineUsers() {
+    	return users.isEmpty() ? Collections.emptySet() : users.values().stream().filter(user -> !user.hasLeft()).collect(Collectors.toSet());
+	}
+
 	public ConcurrentMap<String, User> getUsersMap() {
 	    return users;
 	}
 
 	public Integer countUniqueExtIds() {
-		List<String> uniqueExtIds = new ArrayList<String>();
+		List<String> uniqueExtIds = new ArrayList<>();
 		for (User user : users.values()) {
 			if(!uniqueExtIds.contains(user.getExternalUserId())) {
 				uniqueExtIds.add(user.getExternalUserId());
@@ -278,10 +287,6 @@ public class Meeting {
 		return GuestPolicy.DENY;
 	}
 
-	public int getHtml5InstanceId() { return html5InstanceId; }
-
-    public void setHtml5InstanceId(int instanceId) { html5InstanceId = instanceId; }
-
 	public ArrayList<Group> getGroups() { return groups; }
 
 	public void setGroups(ArrayList<Group> groups) { this.groups = groups; }
@@ -321,7 +326,7 @@ public class Meeting {
 	public void setCaptureSlides(Boolean capture) {
 		this.captureSlides = captureSlides;
 	}
-	
+
 	public Boolean isCaptureNotes() {
         return captureNotes;
     }
@@ -346,12 +351,12 @@ public class Meeting {
 		return endTime;
 	}
 
-	public void setModeratorOnlyMessage(String msg) {
-		modOnlyMessage = msg;
+	public void setWelcomeMsgForModerators(String msg) {
+		welcomeMsgForModerators = msg;
 	}
 
-	public String getModeratorOnlyMessage() {
-		return modOnlyMessage;
+	public String getWelcomeMsgForModerators() {
+		return welcomeMsgForModerators;
 	}
 
 	public void setEndTime(long t) {
@@ -466,7 +471,15 @@ public class Meeting {
 	}
 
 	public String getGuestPolicy() {
-    	return guestPolicy;
+		return guestPolicy;
+	}
+
+	public void setLockSettings(LockSettingsParams lockSettingsParams) {
+		this.lockSettingsParams = lockSettingsParams;
+	}
+
+	public void setWebcamsOnlyForModerator(Boolean webcamsOnlyForModerator) {
+		this.webcamsOnlyForModerator = webcamsOnlyForModerator;
 	}
 
 	public void setGuestLobbyMessage(String message) {
@@ -491,6 +504,22 @@ public class Meeting {
 	public Boolean getAuthenticatedGuest() {
 		return authenticatedGuest;
 	}
+
+	public void setAllowPromoteGuestToModerator(Boolean value) {
+		allowPromoteGuestToModerator = value;
+	}
+
+	public Boolean getAllowPromoteGuestToModerator() {
+		return allowPromoteGuestToModerator;
+	}
+
+    public void setWaitingGuestUsersTimeout(long waitingGuestUsersTimeout) {
+        waitingGuestUsersTimeout = waitingGuestUsersTimeout;
+    }
+
+    public long getWaitingGuestUsersTimeout() {
+        return waitingGuestUsersTimeout;
+    }
 
 	public void setMeetingLayout(String layout) {
 		meetingLayout = layout;
@@ -546,6 +575,10 @@ public class Meeting {
 	}
 
 
+	public String getLoginUrl() {
+		return loginUrl;
+	}
+
 	public String getLogoutUrl() {
 		return logoutUrl;
 	}
@@ -580,6 +613,10 @@ public class Meeting {
 
 	public boolean getAllowStartStopRecording() {
 		return allowStartStopRecording;
+	}
+
+	public boolean getRecordFullDurationMedia() {
+		return recordFullDurationMedia;
 	}
 
     public boolean getWebcamsOnlyForModerator() {
@@ -812,8 +849,8 @@ public class Meeting {
     	this.meetingEndedCallbackURL = meetingEndedCallbackURL;
     }
 
-	public Map<String, Object> getUserCustomData(String userID){
-		return (Map<String, Object>) userCustomData.get(userID);
+	public Map<String, String> getUserCustomData(String userID){
+		return (Map<String, String>) userCustomData.get(userID);
 	}
 
 	public void userRegistered(RegisteredUser user) {
@@ -862,6 +899,7 @@ public class Meeting {
     	private int maxUsers;
     	private boolean record;
     	private boolean autoStartRecording;
+    	private boolean recordFullDurationMedia;
         private boolean allowStartStopRecording;
         private boolean webcamsOnlyForModerator;
         private Integer meetingCameraCap;
@@ -880,6 +918,7 @@ public class Meeting {
     	private String telVoice;
     	private String welcomeMsgTemplate;
     	private String welcomeMsg;
+    	private String loginUrl;
     	private String logoutUrl;
     	private String bannerColor;
     	private String bannerText;
@@ -891,6 +930,8 @@ public class Meeting {
     	private boolean isBreakout;
     	private String guestPolicy;
     	private Boolean authenticatedGuest;
+    	private Boolean allowPromoteGuestToModerator;
+        private long waitingGuestUsersTimeout;
     	private Boolean allowRequestsWithoutSession;
 		private String meetingLayout;
     	private BreakoutRoomsParams breakoutRoomsParams;
@@ -899,7 +940,6 @@ public class Meeting {
 		private Integer maxUserConcurrentAccesses;
 		private Boolean endWhenNoModerator;
 		private Integer endWhenNoModeratorDelayInMinutes;
-		private int html5InstanceId;
 		private ArrayList<Group> groups;
 
     	public Builder(String externalId, String internalId, long createTime) {
@@ -937,6 +977,11 @@ public class Meeting {
     		this.allowStartStopRecording = allow;
     		return this;
     	}
+
+			public Builder withRecordFullDurationMedia(boolean recordFullDurationMedia) {
+				this.recordFullDurationMedia = recordFullDurationMedia;
+				return this;
+			}
 
         public Builder withWebcamsOnlyForModerator(boolean only) {
             this.webcamsOnlyForModerator = only;
@@ -1028,14 +1073,19 @@ public class Meeting {
     		return this;
     	}
 
-    	public Builder isBreakout(Boolean b) {
+    	public Builder withIsBreakout(Boolean b) {
     	  isBreakout = b;
     	  return this;
     	}
 
+    	public Builder withLoginUrl(String l) {
+    	  loginUrl = l;
+    	  return this;
+    	}
+
     	public Builder withLogoutUrl(String l) {
-    		logoutUrl = l;
-    		return this;
+    	  logoutUrl = l;
+    	  return this;
     	}
 
     	public Builder withLogoutTimer(int l) {
@@ -1067,6 +1117,16 @@ public class Meeting {
     		authenticatedGuest = authGuest;
     		return this;
     	}
+
+    	public Builder withAllowPromoteGuestToModerator(Boolean value) {
+		    allowPromoteGuestToModerator = value;
+    		return this;
+    	}
+
+		public Builder withWaitingGuestUsersTimeout(long value) {
+			waitingGuestUsersTimeout = value;
+			return this;
+		}
 
     	public Builder withAllowRequestsWithoutSession(Boolean value) {
     		allowRequestsWithoutSession = value;
@@ -1103,11 +1163,6 @@ public class Meeting {
     		return this;
 		}
 
-		public Builder withHTML5InstanceId(int instanceId) {
-    		html5InstanceId = instanceId;
-    		return this;
-		}
-
 		public Builder withGroups(ArrayList<Group> groups) {
 			this.groups = groups;
 			return this;
@@ -1117,4 +1172,12 @@ public class Meeting {
     		return new Meeting(this);
     	}
     }
+
+	public String getOverrideClientSettings() {
+		return overrideClientSettings;
+	}
+
+	public void setOverrideClientSettings(String overrideClientConfigs) {
+		this.overrideClientSettings = overrideClientConfigs;
+	}
 }

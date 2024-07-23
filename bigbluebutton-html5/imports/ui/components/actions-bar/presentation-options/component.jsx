@@ -2,6 +2,7 @@ import React from 'react';
 import PropTypes from 'prop-types';
 import { defineMessages, injectIntl } from 'react-intl';
 import Button from '/imports/ui/components/common/button/component';
+import Session from '/imports/ui/services/storage/in-memory';
 
 const propTypes = {
   intl: PropTypes.shape({
@@ -37,6 +38,9 @@ const PresentationOptionsContainer = ({
   hasPresentation,
   hasExternalVideo,
   hasScreenshare,
+  hasPinnedSharedNotes,
+  hasGenericContent,
+  hasCameraAsContent,
 }) => {
   let buttonType = 'presentation';
   if (hasExternalVideo) {
@@ -44,9 +48,13 @@ const PresentationOptionsContainer = ({
     buttonType = 'external-video';
   } else if (hasScreenshare) {
     buttonType = 'desktop';
+  } else if (hasCameraAsContent) {
+    buttonType = 'video';
   }
 
-  const isThereCurrentPresentation = hasExternalVideo || hasScreenshare || hasPresentation;
+  const isThereCurrentPresentation = hasExternalVideo || hasScreenshare
+  || hasPresentation || hasPinnedSharedNotes
+  || hasGenericContent || hasCameraAsContent;
   return (
     <Button
       icon={`${buttonType}${!presentationIsOpen ? '_off' : ''}`}
@@ -58,7 +66,12 @@ const PresentationOptionsContainer = ({
       hideLabel
       circle
       size="lg"
-      onClick={() => setPresentationIsOpen(layoutContextDispatch, !presentationIsOpen)}
+      onClick={() => {
+        setPresentationIsOpen(layoutContextDispatch, !presentationIsOpen);
+        if (!hasExternalVideo && !hasScreenshare && !hasPinnedSharedNotes) {
+          Session.setItem('presentationLastState', !presentationIsOpen);
+        }
+      }}
       id="restore-presentation"
       ghost={!presentationIsOpen}
       disabled={!isThereCurrentPresentation}

@@ -2,13 +2,14 @@ package org.bigbluebutton.core.apps.breakout
 
 import org.bigbluebutton.common2.msgs._
 import org.bigbluebutton.core.api.EjectUserFromBreakoutInternalMsg
-import org.bigbluebutton.core.apps.breakout.BreakoutHdlrHelpers.{ getRedirectUrls }
-import org.bigbluebutton.core.apps.{ PermissionCheck, RightsManagementTrait }
+import org.bigbluebutton.core.apps.breakout.BreakoutHdlrHelpers.getRedirectUrls
+import org.bigbluebutton.core.apps.{PermissionCheck, RightsManagementTrait}
 import org.bigbluebutton.core.bus.BigBlueButtonEvent
+import org.bigbluebutton.core.db.{BreakoutRoomUserDAO, NotificationDAO}
 import org.bigbluebutton.core.domain.MeetingState2x
-import org.bigbluebutton.core.models.{ EjectReasonCode }
-import org.bigbluebutton.core.running.{ MeetingActor, OutMsgRouter }
-import org.bigbluebutton.core2.message.senders.{ MsgBuilder }
+import org.bigbluebutton.core.models.EjectReasonCode
+import org.bigbluebutton.core.running.{MeetingActor, OutMsgRouter}
+import org.bigbluebutton.core2.message.senders.MsgBuilder
 
 trait ChangeUserBreakoutReqMsgHdlr extends RightsManagementTrait {
   this: MeetingActor =>
@@ -28,7 +29,6 @@ trait ChangeUserBreakoutReqMsgHdlr extends RightsManagementTrait {
       for {
         breakoutModel <- state.breakout
       } yield {
-
         //Eject user from room From
         for {
           roomFrom <- breakoutModel.rooms.get(msg.body.fromBreakoutId)
@@ -38,6 +38,9 @@ trait ChangeUserBreakoutReqMsgHdlr extends RightsManagementTrait {
           })
         }
 
+        val isSameRoom = msg.body.fromBreakoutId == msg.body.toBreakoutId
+        val removePreviousRoomFromDb = !breakoutModel.rooms.exists(r => r._2.freeJoin) && !isSameRoom
+
         //Get join URL for room To
         val redirectToHtml5JoinURL = (
             for {
@@ -45,7 +48,6 @@ trait ChangeUserBreakoutReqMsgHdlr extends RightsManagementTrait {
               (redirectToHtml5JoinURL, redirectJoinURL) <- getRedirectUrls(liveMeeting, msg.body.userId, roomTo.externalId, roomTo.sequence.toString())
             } yield redirectToHtml5JoinURL
           ).getOrElse("")
-
 
         BreakoutHdlrHelpers.sendChangeUserBreakoutMsg(
           outGW,
@@ -55,6 +57,15 @@ trait ChangeUserBreakoutReqMsgHdlr extends RightsManagementTrait {
           msg.body.toBreakoutId,
           redirectToHtml5JoinURL,
         )
+
+        //Update database
+        BreakoutRoomUserDAO.updateRoomChanged(
+          meetingId,
+          msg.body.userId,
+          msg.body.fromBreakoutId,
+          msg.body.toBreakoutId,
+          redirectToHtml5JoinURL,
+          removePreviousRoomFromDb)
 
         //Send notification to moved User
         for {
@@ -71,6 +82,7 @@ trait ChangeUserBreakoutReqMsgHdlr extends RightsManagementTrait {
             Vector(roomTo.shortName)
           )
           outGW.send(notifyUserEvent)
+          NotificationDAO.insert(notifyUserEvent)
         }
       }
 
